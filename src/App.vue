@@ -309,6 +309,13 @@ function rgba(hexColor, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
+function darkenColor(hexColor, amount) {
+  const r = Math.max(0, Number.parseInt(hexColor.slice(1, 3), 16) - amount)
+  const g = Math.max(0, Number.parseInt(hexColor.slice(3, 5), 16) - amount)
+  const b = Math.max(0, Number.parseInt(hexColor.slice(5, 7), 16) - amount)
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+}
+
 function isBlocked(rect, ignoreTank) {
   if (
     rect.x < 0 ||
@@ -564,6 +571,8 @@ function fireBullet(owner) {
   }
 
   const vector = DIRECTION_VECTORS[owner.dir]
+  const hasPowerBuff = owner.kind === 'player' && state.player.buffs.powerUntil > 0
+  
   state.bullets.push({
     owner: owner.kind,
     x: owner.x + owner.size / 2 + vector.x * (owner.size / 2),
@@ -572,6 +581,7 @@ function fireBullet(owner) {
     speed: BULLET_SPEED,
     damage: owner.kind === 'player' ? getPlayerDamage() : 1,
     alive: true,
+    burning: hasPowerBuff,
   })
   owner.fireCooldown = owner.kind === 'player' ? PLAYER_FIRE_COOLDOWN : ENEMY_FIRE_COOLDOWN
 }
@@ -936,40 +946,92 @@ function drawTank(tank) {
   ctx.rotate(angleMap[dir])
   ctx.translate(-size / 2, -size / 2)
 
+  // 履带部分 - 两侧
+  ctx.fillStyle = '#2a2a2a'
+  ctx.fillRect(0, 0, 4, size)
+  ctx.fillRect(size - 4, 0, 4, size)
+  
+  // 履带纹理
+  ctx.fillStyle = '#1a1a1a'
+  for (let i = 0; i < size; i += 3) {
+    ctx.fillRect(1, i, 2, 1.5)
+    ctx.fillRect(size - 3, i, 2, 1.5)
+  }
+
+  // 车身主体
   ctx.fillStyle = tank.colorMain
-  ctx.fillRect(1, 0, 4, size)
-  ctx.fillRect(size - 5, 0, 4, size)
-  ctx.fillRect(4, 3, size - 8, size - 6)
-
+  ctx.fillRect(4, 2, size - 8, size - 4)
+  
+  // 车身装饰线条
   ctx.fillStyle = tank.colorAccent
-  ctx.fillRect(size / 2 - 2, 2, 4, size - 4)
-  ctx.fillRect(size / 2 - 1, -4, 2, 8)
+  ctx.fillRect(5, 3, size - 10, size - 6)
+  
+  // 车体细节 - 前部装甲
+  ctx.fillStyle = rgba(tank.colorMain, 0.7)
+  ctx.fillRect(5, 2, size - 10, 4)
 
-  ctx.fillStyle = '#20180f'
-  ctx.fillRect(size / 2 - 2, size / 2 - 2, 4, 4)
+  // 炮塔基座
+  ctx.fillStyle = darkenColor(tank.colorMain, 20)
+  ctx.fillRect(size / 2 - 3, size / 2 - 3, 6, 6)
+
+  // 主炮管
+  ctx.fillStyle = '#3a3a3a'
+  ctx.fillRect(size / 2 - 2, -2, 4, size / 2 + 2)
+  
+  // 炮管高光
+  ctx.fillStyle = '#5a5a5a'
+  ctx.fillRect(size / 2 - 1, -1, 2, size / 2)
+
+  // 炮塔顶部
+  ctx.fillStyle = tank.colorAccent
+  ctx.fillRect(size / 2 - 2.5, size / 2 - 2.5, 5, 5)
+  
+  // 炮塔细节
+  ctx.fillStyle = rgba(tank.colorMain, 0.8)
+  ctx.fillRect(size / 2 - 1.5, size / 2 - 1.5, 3, 3)
+
   ctx.restore()
 
+  // 生命条
   if (tank.kind === 'player') {
     const hpRatio = tank.hp / tank.maxHp
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-    ctx.fillRect(x, y - 6, size, 3)
-    ctx.fillStyle = tank.buffs.armorActive ? '#7df0a1' : '#ffd36a'
-    ctx.fillRect(x, y - 6, size * hpRatio, 3)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+    ctx.fillRect(x - 1, y - 7, size + 2, 4)
+    ctx.fillStyle = tank.buffs.armorActive ? '#4ade80' : '#fbbf24'
+    ctx.fillRect(x, y - 6, (size) * hpRatio, 2)
+    
+    // 能量效果（如果有增益）
+    if (tank.buffs.powerUntil > 0) {
+      ctx.strokeStyle = 'rgba(255, 112, 67, 0.6)'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.arc(x + size / 2, y + size / 2, size / 2 + 2, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    if (tank.buffs.speedUntil > 0) {
+      ctx.strokeStyle = 'rgba(41, 182, 246, 0.5)'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.arc(x + size / 2, y + size / 2, size / 2 + 3, 0, Math.PI * 2)
+      ctx.stroke()
+    }
   }
 
   if (tank.kind === 'enemy') {
     const hpRatio = tank.hp / tank.maxHp
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-    ctx.fillRect(x, y - 6, size, 3)
-    ctx.fillStyle = '#ff8d7d'
-    ctx.fillRect(x, y - 6, size * hpRatio, 3)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+    ctx.fillRect(x - 1, y - 7, size + 2, 4)
+    ctx.fillStyle = '#ef4444'
+    ctx.fillRect(x, y - 6, (size) * hpRatio, 2)
   }
 
+  // 出生护盾
   if (tank.spawnShield > 0) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+    const alpha = 0.4 + 0.4 * Math.sin(Date.now() / 100)
+    ctx.strokeStyle = `rgba(100, 200, 255, ${alpha})`
     ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.arc(x + size / 2, y + size / 2, size / 2 + 4, 0, Math.PI * 2)
+    ctx.arc(x + size / 2, y + size / 2, size / 2 + 5, 0, Math.PI * 2)
     ctx.stroke()
   }
 }
@@ -1061,13 +1123,41 @@ function drawScene() {
 
   ctx.fillStyle = COLORS.bullet
   for (const bullet of state.bullets) {
-    ctx.fillRect(bullet.x - 2, bullet.y - 2, 4, 4)
+    if (bullet.burning) {
+      // 燃烧效果的炮弹 - 核心
+      const gradient = ctx.createRadialGradient(bullet.x, bullet.y, 0, bullet.x, bullet.y, 6)
+      gradient.addColorStop(0, '#fff7e6')
+      gradient.addColorStop(0.3, '#ff9500')
+      gradient.addColorStop(0.7, '#ff4500')
+      gradient.addColorStop(1, 'rgba(255, 69, 0, 0)')
+      ctx.fillStyle = gradient
+      ctx.beginPath()
+      ctx.arc(bullet.x, bullet.y, 6, 0, Math.PI * 2)
+      ctx.fill()
+      
+      // 燃烧尾迹粒子
+      if (Math.random() < 0.6) {
+        state.particles.push({
+          x: bullet.x,
+          y: bullet.y,
+          life: 180 + Math.random() * 100,
+          age: 0,
+          vx: (Math.random() - 0.5) * 0.8 - DIRECTION_VECTORS[bullet.dir].x * 1.5,
+          vy: (Math.random() - 0.5) * 0.8 - DIRECTION_VECTORS[bullet.dir].y * 1.5,
+          color: ['#ff6b35', '#ff8c42', '#ffa94d', '#ffd43b'][Math.floor(Math.random() * 4)],
+          size: 2 + Math.random() * 2,
+        })
+      }
+    } else {
+      ctx.fillRect(bullet.x - 2, bullet.y - 2, 4, 4)
+    }
   }
 
   for (const particle of state.particles) {
     const alpha = 1 - particle.age / particle.life
     ctx.fillStyle = rgba(particle.color, alpha)
-    ctx.fillRect(particle.x, particle.y, 3, 3)
+    const size = particle.size || 3
+    ctx.fillRect(particle.x - size / 2, particle.y - size / 2, size, size)
   }
 
   ctx.fillStyle = COLORS.hud

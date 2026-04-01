@@ -17,6 +17,7 @@ const BRICK_HP = 3
 const ENEMY_HP = 5
 const PLAYER_HP = 3
 const ENEMY_AGGRO_RANGE = TILE * 20
+const BGM_SRC = '/audio/suspense.mp3'
 const POWERUP_DURATION = 30000
 const POWERUP_SPAWN_INTERVAL = 12000
 const POWERUP_LIFETIME = 10000
@@ -60,6 +61,7 @@ let lastEnemySpawn = 0
 let lastPowerupSpawn = 0
 let enemyDecisionTimer = 0
 let state
+let bgm = null
 
 const controls = {
   up: false,
@@ -107,6 +109,26 @@ function handleRestart() {
   if (state.gameOver) {
     resetState()
   }
+}
+
+function tryPlayBgm() {
+  if (!bgm) {
+    return
+  }
+  bgm.play().catch(() => {})
+}
+
+function setupBgm() {
+  bgm = new Audio(BGM_SRC)
+  bgm.loop = true
+  bgm.volume = 0.35
+
+  const unlock = () => {
+    tryPlayBgm()
+  }
+
+  window.addEventListener('pointerdown', unlock, { once: true })
+  window.addEventListener('keydown', unlock, { once: true })
 }
 
 function createBrickRect(col, row, width = 1, height = 1) {
@@ -1239,6 +1261,7 @@ onMounted(() => {
   ctx.imageSmoothingEnabled = false
 
   resetState()
+  setupBgm()
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
   animationFrame = requestAnimationFrame(tick)
@@ -1246,6 +1269,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(animationFrame)
+  if (bgm) {
+    bgm.pause()
+    bgm = null
+  }
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
 })

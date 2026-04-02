@@ -239,6 +239,7 @@ function createPlayer() {
     x: 12 * TILE,
     y: 22 * TILE,
     size: 14,
+    renderSize: 15,
     dir: 'up',
     speed: PLAYER_SPEED,
     hp: PLAYER_HP,
@@ -262,6 +263,7 @@ function createEnemy(spawnX) {
     x: spawnX,
     y: 0,
     size: 14,
+    renderSize: 15,
     dir: 'down',
     speed: ENEMY_SPEED,
     hp: ENEMY_HP,
@@ -1006,8 +1008,12 @@ function drawTank(tank) {
   }
 
   const { x, y, size, dir } = tank
+  const renderSize = tank.renderSize ?? size
+  const renderOffset = (size - renderSize) / 2
+  const renderScale = renderSize / size
   ctx.save()
   ctx.translate(x + size / 2, y + size / 2)
+  ctx.scale(renderScale, renderScale)
   const angleMap = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 }
   ctx.rotate(angleMap[dir])
   ctx.translate(-size / 2, -size / 2)
@@ -1062,23 +1068,23 @@ function drawTank(tank) {
   if (tank.kind === 'player') {
     const hpRatio = tank.hp / tank.maxHp
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
-    ctx.fillRect(x - 1, y - 7, size + 2, 4)
+    ctx.fillRect(x + renderOffset - 1, y + renderOffset - 7, renderSize + 2, 4)
     ctx.fillStyle = tank.buffs.armorActive ? '#4ade80' : '#fbbf24'
-    ctx.fillRect(x, y - 6, (size) * hpRatio, 2)
+    ctx.fillRect(x + renderOffset, y + renderOffset - 6, renderSize * hpRatio, 2)
     
     // 能量效果（如果有增益）
     if (tank.buffs.powerUntil > 0) {
       ctx.strokeStyle = 'rgba(255, 112, 67, 0.6)'
       ctx.lineWidth = 1
       ctx.beginPath()
-      ctx.arc(x + size / 2, y + size / 2, size / 2 + 2, 0, Math.PI * 2)
+      ctx.arc(x + renderOffset + renderSize / 2, y + renderOffset + renderSize / 2, renderSize / 2 + 2, 0, Math.PI * 2)
       ctx.stroke()
     }
     if (tank.buffs.speedUntil > 0) {
       ctx.strokeStyle = 'rgba(41, 182, 246, 0.5)'
       ctx.lineWidth = 1
       ctx.beginPath()
-      ctx.arc(x + size / 2, y + size / 2, size / 2 + 3, 0, Math.PI * 2)
+      ctx.arc(x + renderOffset + renderSize / 2, y + renderOffset + renderSize / 2, renderSize / 2 + 3, 0, Math.PI * 2)
       ctx.stroke()
     }
   }
@@ -1086,9 +1092,9 @@ function drawTank(tank) {
   if (tank.kind === 'enemy') {
     const hpRatio = tank.hp / tank.maxHp
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
-    ctx.fillRect(x - 1, y - 7, size + 2, 4)
+    ctx.fillRect(x + renderOffset - 1, y + renderOffset - 7, renderSize + 2, 4)
     ctx.fillStyle = '#ef4444'
-    ctx.fillRect(x, y - 6, (size) * hpRatio, 2)
+    ctx.fillRect(x + renderOffset, y + renderOffset - 6, renderSize * hpRatio, 2)
   }
 
   // 出生护盾
@@ -1097,7 +1103,7 @@ function drawTank(tank) {
     ctx.strokeStyle = `rgba(100, 200, 255, ${alpha})`
     ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.arc(x + size / 2, y + size / 2, size / 2 + 5, 0, Math.PI * 2)
+    ctx.arc(x + renderOffset + renderSize / 2, y + renderOffset + renderSize / 2, renderSize / 2 + 5, 0, Math.PI * 2)
     ctx.stroke()
   }
 }

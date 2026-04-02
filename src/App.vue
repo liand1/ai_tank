@@ -18,6 +18,8 @@ const ENEMY_HP = 5
 const PLAYER_HP = 3
 const ENEMY_AGGRO_RANGE = TILE * 20
 const BGM_SRC = '/audio/suspense.mp3'
+const SFX_EXPLOSION = '/audio/explosion.ogg'
+const SFX_POWERUP = '/audio/powerup.ogg'
 const POWERUP_DURATION = 30000
 const POWERUP_SPAWN_INTERVAL = 12000
 const POWERUP_LIFETIME = 10000
@@ -65,6 +67,7 @@ let enemyDecisionTimer = 0
 let gameTime = 0
 let state
 let bgm = null
+let audioUnlocked = false
 
 const controls = {
   up: false,
@@ -121,18 +124,32 @@ function tryPlayBgm() {
   bgm.play().catch(() => {})
 }
 
+function playSfx(src, volume = 0.5) {
+  if (!audioUnlocked) {
+    return
+  }
+  const sound = new Audio(src)
+  sound.volume = volume
+  sound.play().catch(() => {})
+}
+
 function setupBgm() {
   bgm = new Audio(BGM_SRC)
   bgm.loop = true
   bgm.volume = 0.35
 
   const unlock = () => {
+    audioUnlocked = true
     tryPlayBgm()
+    if (engineAudio && playerMoving) {
+      engineAudio.play().catch(() => {})
+    }
   }
 
   window.addEventListener('pointerdown', unlock, { once: true })
   window.addEventListener('keydown', unlock, { once: true })
 }
+
 
 function createBrickRect(col, row, width = 1, height = 1) {
   return {
@@ -465,6 +482,7 @@ function spawnPowerup(now) {
 }
 
 function applyPowerup(type) {
+  playSfx(SFX_POWERUP, 0.45)
   if (type === 'power') {
     state.player.buffs.powerUntil = POWERUP_DURATION
     statusText.value = '拿到火力徽章，30 秒内两炮击毁敌军。'
@@ -611,6 +629,7 @@ function fireBullet(owner) {
     damage: owner.kind === 'player' ? getPlayerDamage() : 1,
     alive: true,
     burning: hasPowerBuff,
+    trail: [],
   })
   owner.fireCooldown = owner.kind === 'player' ? PLAYER_FIRE_COOLDOWN : ENEMY_FIRE_COOLDOWN
 }
@@ -810,6 +829,7 @@ function damageTank(tank, damage) {
   }
 
   tank.alive = false
+  playSfx(SFX_EXPLOSION, 0.6)
   explode(tank.x + tank.size / 2, tank.y + tank.size / 2, tank.colorMain)
 
   if (tank.kind === 'enemy') {
@@ -873,6 +893,10 @@ function updateBullets(deltaMs) {
     const vector = DIRECTION_VECTORS[bullet.dir]
     bullet.x += vector.x * step
     bullet.y += vector.y * step
+    bullet.trail.push({ x: bullet.x, y: bullet.y })
+    if (bullet.trail.length > 8) {
+      bullet.trail.shift()
+    }
 
     const rect = bulletRect(bullet)
     if (
@@ -1184,6 +1208,18 @@ function drawScene() {
   }
 
   state.powerups.forEach(drawPowerup)
+
+  for (const bullet of state.bullets) {
+    if (!bullet.trail || bullet.trail.length < 2) {
+      continue
+    }
+    for (let i = 0; i < bullet.trail.length; i += 1) {
+      const point = bullet.trail[i]
+      const alpha = (i + 1) / bullet.trail.length
+      ctx.fillStyle = `rgba(244, 244, 244, ${alpha * 0.45})`
+      ctx.fillRect(point.x - 1, point.y - 1, 2, 2)
+    }
+  }
   drawTank(state.player)
   state.enemies.forEach(drawTank)
 

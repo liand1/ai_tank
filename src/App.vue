@@ -21,6 +21,8 @@ const BGM_SRC = '/audio/suspense.mp3'
 const POWERUP_DURATION = 30000
 const POWERUP_SPAWN_INTERVAL = 12000
 const POWERUP_LIFETIME = 10000
+const GAME_TIME = 150000
+const EXTRA_ENEMY_INTERVAL = 50000
 const DIRECTIONS = ['up', 'right', 'down', 'left']
 const DIRECTION_VECTORS = {
   up: { x: 0, y: -1 },
@@ -60,6 +62,7 @@ let lastTime = 0
 let lastEnemySpawn = 0
 let lastPowerupSpawn = 0
 let enemyDecisionTimer = 0
+let gameTime = 0
 let state
 let bgm = null
 
@@ -289,6 +292,7 @@ function resetState() {
       alive: true,
     },
     enemyQueue: 10,
+    extraEnemiesSpawned: 0,
     gameOver: false,
     victory: false,
   }
@@ -301,6 +305,7 @@ function resetState() {
   lastEnemySpawn = 0
   lastPowerupSpawn = 0
   enemyDecisionTimer = 0
+  gameTime = 0
 }
 
 function rectsOverlap(a, b) {
@@ -659,6 +664,36 @@ function spawnEnemy(now) {
   lastEnemySpawn = now
 }
 
+function spawnExtraEnemy(now) {
+  if (gameTime >= GAME_TIME) {
+    return
+  }
+  
+  const extraEnemyCount = Math.floor(gameTime / EXTRA_ENEMY_INTERVAL)
+  if (extraEnemyCount <= state.extraEnemiesSpawned) {
+    return
+  }
+  
+  if (state.enemies.filter((enemy) => enemy.alive).length >= 2) {
+    return
+  }
+
+  const spawnPoints = [0, 12 * TILE, 24 * TILE]
+  const available = spawnPoints.filter((spawnX) => {
+    const probe = { x: spawnX, y: 0, w: 14, h: 14 }
+    return !isBlocked(probe)
+  })
+
+  if (available.length === 0) {
+    return
+  }
+
+  const spawnX = available[Math.floor(Math.random() * available.length)]
+  state.enemies.push(createEnemy(spawnX))
+  state.extraEnemiesSpawned += 1
+  statusText.value = '敌军增援到达！'
+}
+
 function chooseEnemyDirection(enemy) {
   const player = state.player
   const passable = getPassableDirections(enemy)
@@ -755,6 +790,7 @@ function updateEnemies(deltaMs, now) {
   }
 
   spawnEnemy(now)
+  spawnExtraEnemy(now)
 }
 
 function damageTank(tank, damage) {
@@ -926,6 +962,14 @@ function tick(now) {
   lastTime = now
 
   if (!state.gameOver) {
+    gameTime += deltaMs
+    
+    if (gameTime >= GAME_TIME && !state.victory) {
+      state.gameOver = true
+      state.victory = true
+      statusText.value = '时间到！你成功守住了基地。按 Enter 重新开始。'
+    }
+
     state.player.fireCooldown -= deltaMs
     state.player.spawnShield = Math.max(0, state.player.spawnShield - deltaMs)
 
@@ -1191,6 +1235,7 @@ function drawScene() {
   ctx.fillText('90', BOARD_COLS * TILE + 36, 60)
 
   ctx.font = '14px monospace'
+  ctx.fillText(`TIME ${Math.max(0, Math.ceil((GAME_TIME - gameTime) / 1000))}`, BOARD_COLS * TILE + 18, 96)
   ctx.fillText(`LIFE ${stats.value.playerLives}`, BOARD_COLS * TILE + 18, 120)
   ctx.fillText(`HP ${state.player.hp}`, BOARD_COLS * TILE + 18, 142)
   ctx.fillText(`LEFT ${stats.value.enemyLeft}`, BOARD_COLS * TILE + 18, 176)

@@ -5,6 +5,6 @@ node_modules/
 # Build artifacts
 dist/
 
-# Temporary files
-*.tmp
+# Package lock
+*.package-lock.json
 ```

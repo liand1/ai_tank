@@ -55,6 +55,61 @@ body {
   color: rgba(244, 234, 208, 0.86);
 }
 
+.mode-switch {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mode-btn,
+.room-btn {
+  border: 2px solid rgba(240, 211, 143, 0.6);
+  background: rgba(40, 26, 10, 0.85);
+  color: #f4ead0;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 700;
+  border-radius: 14px;
+}
+
+.mode-btn.active {
+  background: #f0d38f;
+  color: #2b1908;
+}
+
+.room-panel {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.room-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.room-join {
+  display: flex;
+  gap: 8px;
+}
+
+.room-join input {
+  width: 110px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(240, 211, 143, 0.6);
+  background: rgba(20, 12, 6, 0.8);
+  color: #f4ead0;
+}
+
+.room-status p {
+  margin: 4px 0;
+}
+
 .game-frame {
   width: 100%;
   display: flex;

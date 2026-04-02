@@ -25,6 +25,7 @@ const POWERUP_SPAWN_INTERVAL = 12000
 const POWERUP_LIFETIME = 10000
 const GAME_TIME = 150000
 const EXTRA_ENEMY_INTERVAL = 50000
+const WS_PORT = 10087
 const DIRECTIONS = ['up', 'right', 'down', 'left']
 const DIRECTION_VECTORS = {
   up: { x: 0, y: -1 },
@@ -52,8 +53,16 @@ const COLORS = {
 
 const canvasRef = ref(null)
 const statusText = ref('按方向键移动，空格发射，守住基地。')
+const mode = ref('single')
+const roomInput = ref('')
+const roomCode = ref('')
+const mpStatus = ref('idle')
+const isHost = ref(false)
+const localReady = ref(false)
+const remoteReady = ref(false)
 const stats = ref({
   playerLives: 3,
+  player2Lives: 3,
   enemyLeft: 10,
   score: 0,
 })
@@ -68,6 +77,14 @@ let gameTime = 0
 let state
 let bgm = null
 let audioUnlocked = false
+let ws = null
+let remoteControls = {
+  up: false,
+  down: false,
+  left: false,
+  right: false,
+  fire: false,
+}
 
 const controls = {
   up: false,
@@ -78,6 +95,7 @@ const controls = {
 }
 
 const mobileHint = computed(() => window.innerWidth < 860)
+const isMultiplayer = computed(() => mode.value === 'multi')
 
 const powerupTypes = {
   power: {
@@ -102,6 +120,7 @@ const powerupTypes = {
 
 function setControl(key, pressed) {
   controls[key] = pressed
+  sendInput()
 }
 
 function tapAction(key) {
@@ -109,6 +128,7 @@ function tapAction(key) {
   window.setTimeout(() => {
     controls[key] = false
   }, 90)
+  sendInput()
 }
 
 function handleRestart() {
@@ -141,13 +161,178 @@ function setupBgm() {
   const unlock = () => {
     audioUnlocked = true
     tryPlayBgm()
-    if (engineAudio && playerMoving) {
-      engineAudio.play().catch(() => {})
-    }
   }
 
   window.addEventListener('pointerdown', unlock, { once: true })
   window.addEventListener('keydown', unlock, { once: true })
+}
+
+function getWsUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const wsParam = params.get('ws')
+  if (wsParam) {
+    if (wsParam.startsWith('ws://') || wsParam.startsWith('wss://')) {
+      return wsParam
+    }
+    return `ws://${wsParam}`
+  }
+  return `ws://${window.location.hostname}:${WS_PORT}`
+}
+
+function connectWs() {
+  if (ws) {
+    ws.close()
+  }
+  ws = new WebSocket(getWsUrl())
+  ws.onmessage = (event) => {
+    let msg
+    try {
+      msg = JSON.parse(event.data)
+    } catch {
+      return
+    }
+
+    if (msg.type === 'room_created') {
+      roomCode.value = msg.code
+      mpStatus.value = 'waiting'
+      isHost.value = true
+      return
+    }
+
+    if (msg.type === 'room_joined') {
+      roomCode.value = msg.code
+      mpStatus.value = 'waiting'
+      isHost.value = false
+      return
+    }
+
+    if (msg.type === 'join_error') {
+      statusText.value = msg.message || '加入失败。'
+      return
+    }
+
+    if (msg.type === 'room_status') {
+      mpStatus.value = msg.status
+      return
+    }
+
+    if (msg.type === 'ready_state') {
+      localReady.value = isHost.value ? msg.ready.host : msg.ready.guest
+      remoteReady.value = isHost.value ? msg.ready.guest : msg.ready.host
+      return
+    }
+
+    if (msg.type === 'start') {
+      mpStatus.value = 'playing'
+      startMultiplayer()
+      return
+    }
+
+    if (msg.type === 'state' && !isHost.value) {
+      state = msg.state
+      return
+    }
+
+    if (msg.type === 'input' && isHost.value) {
+      remoteControls = { ...remoteControls, ...msg.controls }
+      return
+    }
+
+    if (msg.type === 'end') {
+      mpStatus.value = 'ended'
+      statusText.value = msg.winner === 'host'
+        ? '对手退出，你获胜。'
+        : msg.winner === 'guest'
+          ? '对手获胜。'
+          : '游戏结束。'
+    }
+  }
+}
+
+function selectMode(nextMode) {
+  mode.value = nextMode
+  resetState()
+  mpStatus.value = 'idle'
+  roomCode.value = ''
+  roomInput.value = ''
+  localReady.value = false
+  remoteReady.value = false
+  isHost.value = false
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+}
+
+function createRoom() {
+  if (!roomInput.value.trim()) {
+    statusText.value = '请输入房间号。'
+    return
+  }
+  connectWs()
+  ws.addEventListener('open', () => {
+    ws.send(JSON.stringify({ type: 'create', code: roomInput.value.trim().toUpperCase() }))
+  }, { once: true })
+}
+
+function joinRoom() {
+  if (!roomInput.value.trim()) {
+    statusText.value = '请输入房间号。'
+    return
+  }
+  connectWs()
+  ws.addEventListener('open', () => {
+    ws.send(JSON.stringify({ type: 'join', code: roomInput.value.trim().toUpperCase() }))
+  }, { once: true })
+}
+
+function setReady(value) {
+  localReady.value = value
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'ready', value }))
+  }
+}
+
+function sendInput() {
+  if (!ws || ws.readyState !== WebSocket.OPEN || isHost.value || mpStatus.value !== 'playing') {
+    return
+  }
+  ws.send(JSON.stringify({ type: 'input', controls }))
+}
+
+function sendStateToGuest() {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !isHost.value || mpStatus.value !== 'playing') {
+    return
+  }
+  ws.send(JSON.stringify({ type: 'state', state }))
+}
+
+function startMultiplayer() {
+  resetState()
+  if (isHost.value) {
+    state.player2 = createPlayer()
+    state.player2.kind = 'player2'
+    state.player2.x = 12 * TILE
+    state.player2.y = 2 * TILE
+    state.player2.colorMain = '#9bd2ff'
+    state.player2.colorAccent = '#2b6cb0'
+    state.baseA = {
+      x: 1 * TILE,
+      y: 24 * TILE,
+      w: 2 * TILE,
+      h: 2 * TILE,
+      alive: true,
+    }
+    state.baseB = {
+      x: 23 * TILE,
+      y: 24 * TILE,
+      w: 2 * TILE,
+      h: 2 * TILE,
+      alive: true,
+    }
+    state.enemyQueue = 0
+    state.enemies = []
+  }
 }
 
 
@@ -317,6 +502,7 @@ function resetState() {
   }
   stats.value = {
     playerLives: 3,
+    player2Lives: 3,
     enemyLeft: state.enemyQueue,
     score: 0,
   }
@@ -381,11 +567,17 @@ function isBlocked(rect, ignoreTank) {
     }
   }
 
-  if (state.base.alive && rectsOverlap(rect, state.base)) {
+  if (state.base && state.base.alive && rectsOverlap(rect, state.base)) {
+    return true
+  }
+  if (state.baseA && state.baseA.alive && rectsOverlap(rect, state.baseA)) {
+    return true
+  }
+  if (state.baseB && state.baseB.alive && rectsOverlap(rect, state.baseB)) {
     return true
   }
 
-  const tanks = [state.player, ...state.enemies]
+  const tanks = [state.player, ...(state.player2 ? [state.player2] : []), ...state.enemies]
   for (const tank of tanks) {
     if (!tank.alive || tank === ignoreTank) {
       continue
@@ -414,7 +606,13 @@ function isAreaOpen(rect) {
     }
   }
 
-  if (state.base.alive && rectsOverlap(rect, state.base)) {
+  if (state.base && state.base.alive && rectsOverlap(rect, state.base)) {
+    return false
+  }
+  if (state.baseA && state.baseA.alive && rectsOverlap(rect, state.baseA)) {
+    return false
+  }
+  if (state.baseB && state.baseB.alive && rectsOverlap(rect, state.baseB)) {
     return false
   }
 
@@ -481,23 +679,23 @@ function spawnPowerup(now) {
   lastPowerupSpawn = now
 }
 
-function applyPowerup(type) {
+function applyPowerup(type, tank = state.player) {
   playSfx(SFX_POWERUP, 0.45)
   if (type === 'power') {
-    state.player.buffs.powerUntil = POWERUP_DURATION
+    tank.buffs.powerUntil = POWERUP_DURATION
     statusText.value = '拿到火力徽章，30 秒内两炮击毁敌军。'
     return
   }
 
   if (type === 'speed') {
-    state.player.buffs.speedUntil = POWERUP_DURATION
+    tank.buffs.speedUntil = POWERUP_DURATION
     statusText.value = '拿到引擎徽章，30 秒内移动速度翻倍。'
     return
   }
 
-  state.player.buffs.armorActive = true
-  state.player.maxHp = 6
-  state.player.hp = Math.max(state.player.hp, 6)
+  tank.buffs.armorActive = true
+  tank.maxHp = 6
+  tank.hp = Math.max(tank.hp, 6)
   statusText.value = '拿到装甲徽章，这条命需要 6 发炮弹才会被击毁。'
 }
 
@@ -508,7 +706,10 @@ function updatePowerups(deltaMs, now) {
     item.life -= deltaMs
     if (rectsOverlap(itemRect(item), tankRect(state.player))) {
       item.life = 0
-      applyPowerup(item.type)
+      applyPowerup(item.type, state.player)
+    } else if (state.player2 && rectsOverlap(itemRect(item), tankRect(state.player2))) {
+      item.life = 0
+      applyPowerup(item.type, state.player2)
     }
   }
 
@@ -613,12 +814,16 @@ function tryMoveTank(tank, distance) {
 
 function fireBullet(owner) {
   const activeBullets = state.bullets.filter((bullet) => bullet.owner === owner.kind)
-  if (owner.kind === 'player' && activeBullets.length >= MAX_PLAYER_BULLETS) {
+  if ((owner.kind === 'player' || owner.kind === 'player2') && activeBullets.length >= MAX_PLAYER_BULLETS) {
     return
   }
 
   const vector = DIRECTION_VECTORS[owner.dir]
-  const hasPowerBuff = owner.kind === 'player' && state.player.buffs.powerUntil > 0
+  const hasPowerBuff = owner.kind === 'player'
+    ? state.player.buffs.powerUntil > 0
+    : owner.kind === 'player2'
+      ? state.player2?.buffs.powerUntil > 0
+      : false
   
   state.bullets.push({
     owner: owner.kind,
@@ -631,32 +836,33 @@ function fireBullet(owner) {
     burning: hasPowerBuff,
     trail: [],
   })
-  owner.fireCooldown = owner.kind === 'player' ? PLAYER_FIRE_COOLDOWN : ENEMY_FIRE_COOLDOWN
+  owner.fireCooldown = owner.kind === 'enemy' ? ENEMY_FIRE_COOLDOWN : PLAYER_FIRE_COOLDOWN
 }
 
-function handlePlayerInput(deltaMs) {
-  const player = state.player
-  if (!player.alive || state.gameOver) {
+function handleTankInput(tank, controlSet, deltaMs, trackMoving) {
+  if (!tank || !tank.alive || state.gameOver) {
     return
   }
 
-  const distance = player.speed * getPlayerSpeedMultiplier() * (deltaMs / 16.67)
-  if (controls.up) {
-    player.dir = 'up'
-    tryMoveTank(player, distance)
-  } else if (controls.down) {
-    player.dir = 'down'
-    tryMoveTank(player, distance)
-  } else if (controls.left) {
-    player.dir = 'left'
-    tryMoveTank(player, distance)
-  } else if (controls.right) {
-    player.dir = 'right'
-    tryMoveTank(player, distance)
+  const speedMultiplier = tank === state.player ? getPlayerSpeedMultiplier() : 1
+  const distance = tank.speed * speedMultiplier * (deltaMs / 16.67)
+
+  if (controlSet.up) {
+    tank.dir = 'up'
+    tryMoveTank(tank, distance)
+  } else if (controlSet.down) {
+    tank.dir = 'down'
+    tryMoveTank(tank, distance)
+  } else if (controlSet.left) {
+    tank.dir = 'left'
+    tryMoveTank(tank, distance)
+  } else if (controlSet.right) {
+    tank.dir = 'right'
+    tryMoveTank(tank, distance)
   }
 
-  if (controls.fire && player.fireCooldown <= 0) {
-    fireBullet(player)
+  if (controlSet.fire && tank.fireCooldown <= 0) {
+    fireBullet(tank)
   }
 }
 
@@ -840,21 +1046,36 @@ function damageTank(tank, damage) {
       state.gameOver = true
       statusText.value = '胜利，你守住了基地。按 Enter 重新开始。'
     }
-  } else {
-    if (tank.hp > 0) {
-      statusText.value = `我方坦克剩余 ${tank.hp} 点耐久。`
     } else {
-      stats.value.playerLives -= 1
-      if (stats.value.playerLives > 0) {
-        state.player = createPlayer()
-        statusText.value = `你被击毁了，剩余生命 ${stats.value.playerLives}。`
+      if (tank.hp > 0) {
+        statusText.value = `我方坦克剩余 ${tank.hp} 点耐久。`
+      } else if (tank.kind === 'player2') {
+        stats.value.player2Lives -= 1
+        if (stats.value.player2Lives > 0) {
+          const respawn = createPlayer()
+          respawn.kind = 'player2'
+          respawn.x = 12 * TILE
+          respawn.y = 2 * TILE
+          respawn.colorMain = '#9bd2ff'
+          respawn.colorAccent = '#2b6cb0'
+          state.player2 = respawn
+          statusText.value = `蓝色坦克被击毁，剩余生命 ${stats.value.player2Lives}。`
+        } else {
+          state.gameOver = true
+          statusText.value = '蓝色坦克耗尽生命，游戏结束。'
+        }
       } else {
-        state.gameOver = true
-        statusText.value = '游戏结束，基地失守前你已耗尽生命。按 Enter 重新开始。'
+        stats.value.playerLives -= 1
+        if (stats.value.playerLives > 0) {
+          state.player = createPlayer()
+          statusText.value = `你被击毁了，剩余生命 ${stats.value.playerLives}。`
+        } else {
+          state.gameOver = true
+          statusText.value = '游戏结束，基地失守前你已耗尽生命。按 Enter 重新开始。'
+        }
       }
     }
   }
-}
 
 function damageObstacle(obstacle) {
   if (obstacle.type !== 'brick') {
@@ -931,7 +1152,7 @@ function updateBullets(deltaMs) {
       continue
     }
 
-    if (state.base.alive && rectsOverlap(rect, state.base)) {
+    if (state.base && state.base.alive && rectsOverlap(rect, state.base)) {
       state.base.alive = false
       state.gameOver = true
       bullet.alive = false
@@ -940,7 +1161,38 @@ function updateBullets(deltaMs) {
       continue
     }
 
-    const targets = bullet.owner === 'player' ? state.enemies : [state.player]
+    if (state.baseA && state.baseA.alive && rectsOverlap(rect, state.baseA)) {
+      state.baseA.alive = false
+      state.gameOver = true
+      bullet.alive = false
+      explode(state.baseA.x + TILE, state.baseA.y + TILE, COLORS.base)
+      statusText.value = bullet.owner === 'player' ? '你摧毁了对方总部，获胜！' : '你的总部被摧毁了，失败。'
+      if (isMultiplayer.value && isHost.value) {
+        ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: 'end', winner: bullet.owner === 'player' ? 'host' : 'guest' }))
+      }
+      continue
+    }
+
+    if (state.baseB && state.baseB.alive && rectsOverlap(rect, state.baseB)) {
+      state.baseB.alive = false
+      state.gameOver = true
+      bullet.alive = false
+      explode(state.baseB.x + TILE, state.baseB.y + TILE, COLORS.base)
+      statusText.value = bullet.owner === 'player2' ? '你摧毁了对方总部，获胜！' : '你的总部被摧毁了，失败。'
+      if (isMultiplayer.value && isHost.value) {
+        ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: 'end', winner: bullet.owner === 'player2' ? 'guest' : 'host' }))
+      }
+      continue
+    }
+
+    let targets = []
+    if (isMultiplayer.value && state.player2) {
+      if (bullet.owner === 'player') targets = [state.player2, ...state.enemies]
+      else if (bullet.owner === 'player2') targets = [state.player, ...state.enemies]
+      else if (bullet.owner === 'enemy') targets = [state.player, state.player2]
+    } else {
+      targets = bullet.owner === 'player' ? state.enemies : [state.player]
+    }
     for (const target of targets) {
       if (!target.alive || target.spawnShield > 0) {
         continue
@@ -987,8 +1239,8 @@ function tick(now) {
   const deltaMs = Math.min(now - lastTime || 16.67, 33.34)
   lastTime = now
 
-  if (!state.gameOver) {
-    gameTime += deltaMs
+    if (!state.gameOver) {
+      gameTime += deltaMs
     
     if (gameTime >= GAME_TIME && !state.victory) {
       state.gameOver = true
@@ -996,18 +1248,32 @@ function tick(now) {
       statusText.value = '时间到！你成功守住了基地。按 Enter 重新开始。'
     }
 
-    state.player.fireCooldown -= deltaMs
-    state.player.spawnShield = Math.max(0, state.player.spawnShield - deltaMs)
+        if (!isMultiplayer.value || isHost.value) {
+          state.player.fireCooldown -= deltaMs
+          if (isMultiplayer.value && state.player2) {
+            state.player2.fireCooldown -= deltaMs
+            state.player2.spawnShield = Math.max(0, state.player2.spawnShield - deltaMs)
+          }
+          state.player.spawnShield = Math.max(0, state.player.spawnShield - deltaMs)
 
-    handlePlayerInput(deltaMs)
-    updateEnemies(deltaMs, now)
-    updatePowerups(deltaMs, now)
-    updateBullets(deltaMs)
-    updateParticles(deltaMs)
-  } else {
-    updatePowerups(deltaMs, now)
-    updateParticles(deltaMs)
-  }
+        if (isMultiplayer.value) {
+          handleTankInput(state.player, controls, deltaMs, true)
+          handleTankInput(state.player2, remoteControls, deltaMs, false)
+        } else {
+          handleTankInput(state.player, controls, deltaMs, true)
+        }
+        updateEnemies(deltaMs, now)
+        updatePowerups(deltaMs, now)
+        updateBullets(deltaMs)
+        updateParticles(deltaMs)
+        if (isMultiplayer.value) {
+          sendStateToGuest()
+        }
+      }
+    } else {
+      updatePowerups(deltaMs, now)
+      updateParticles(deltaMs)
+    }
 
   drawScene()
   animationFrame = requestAnimationFrame(tick)
@@ -1201,10 +1467,20 @@ function drawScene() {
     }
   }
 
-  if (state.base.alive) {
+  if (state.base && state.base.alive) {
     drawTileRect(state.base.x, state.base.y, state.base.w, state.base.h, COLORS.base, '#f2db87')
     ctx.fillStyle = '#573500'
     ctx.fillRect(state.base.x + 9, state.base.y + 9, 14, 14)
+  }
+  if (state.baseA && state.baseA.alive) {
+    drawTileRect(state.baseA.x, state.baseA.y, state.baseA.w, state.baseA.h, '#7fd3ff', '#c3edff')
+    ctx.fillStyle = '#0b2c4d'
+    ctx.fillRect(state.baseA.x + 9, state.baseA.y + 9, 14, 14)
+  }
+  if (state.baseB && state.baseB.alive) {
+    drawTileRect(state.baseB.x, state.baseB.y, state.baseB.w, state.baseB.h, '#ff9a7a', '#ffd0c2')
+    ctx.fillStyle = '#4a1b0b'
+    ctx.fillRect(state.baseB.x + 9, state.baseB.y + 9, 14, 14)
   }
 
   state.powerups.forEach(drawPowerup)
@@ -1221,6 +1497,9 @@ function drawScene() {
     }
   }
   drawTank(state.player)
+  if (state.player2) {
+    drawTank(state.player2)
+  }
   state.enemies.forEach(drawTank)
 
   for (const obstacle of state.obstacles) {
@@ -1280,7 +1559,10 @@ function drawScene() {
   ctx.fillText(`TIME ${Math.max(0, Math.ceil((GAME_TIME - gameTime) / 1000))}`, BOARD_COLS * TILE + 18, 96)
   ctx.fillText(`LIFE ${stats.value.playerLives}`, BOARD_COLS * TILE + 18, 120)
   ctx.fillText(`HP ${state.player.hp}`, BOARD_COLS * TILE + 18, 142)
-  ctx.fillText(`LEFT ${stats.value.enemyLeft}`, BOARD_COLS * TILE + 18, 176)
+  if (state.player2) {
+    ctx.fillText(`P2 ${stats.value.player2Lives}`, BOARD_COLS * TILE + 18, 164)
+  }
+  ctx.fillText(`LEFT ${stats.value.enemyLeft}`, BOARD_COLS * TILE + 18, 186)
   ctx.fillText('SCORE', BOARD_COLS * TILE + 18, 206)
   ctx.fillText(`${stats.value.score}`, BOARD_COLS * TILE + 18, 228)
   ctx.fillText(`P ${state.player.buffs.powerUntil > 0 ? Math.ceil(state.player.buffs.powerUntil / 1000) : 0}`, BOARD_COLS * TILE + 18, 252)
@@ -1323,6 +1605,7 @@ function handleKeyDown(event) {
   if (key) {
     event.preventDefault()
     controls[key] = true
+    sendInput()
     return
   }
 
@@ -1338,6 +1621,7 @@ function handleKeyUp(event) {
   }
   event.preventDefault()
   controls[key] = false
+  sendInput()
 }
 
 onMounted(() => {
@@ -1371,6 +1655,32 @@ onBeforeUnmount(() => {
       <p class="eyebrow">Vue + Canvas</p>
       <h1>红白机风格坦克大战</h1>
       <p class="subtitle">{{ statusText }}</p>
+      <div class="mode-switch">
+        <button class="mode-btn" :class="{ active: mode === 'single' }" @click="selectMode('single')">
+          单机模式
+        </button>
+        <button class="mode-btn" :class="{ active: mode === 'multi' }" @click="selectMode('multi')">
+          联机对战
+        </button>
+      </div>
+
+      <div v-if="mode === 'multi'" class="room-panel">
+        <div v-if="!roomCode" class="room-actions">
+          <button class="room-btn" @click="createRoom">创建房间</button>
+          <div class="room-join">
+            <input v-model="roomInput" placeholder="房间号" />
+            <button class="room-btn" @click="joinRoom">加入</button>
+          </div>
+        </div>
+        <div v-else class="room-status">
+          <p>房间号：{{ roomCode }}</p>
+          <p>状态：{{ mpStatus }}</p>
+          <p>准备：你 {{ localReady ? '已准备' : '未准备' }} / 对方 {{ remoteReady ? '已准备' : '未准备' }}</p>
+          <button class="room-btn" @click="setReady(!localReady)">
+            {{ localReady ? '取消准备' : '准备' }}
+          </button>
+        </div>
+      </div>
       <p v-if="mobileHint" class="mobile-tip">
         建议用桌面端体验，当前版本按键控制为方向键移动、空格开火。
       </p>

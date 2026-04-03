@@ -15,7 +15,9 @@ const ENEMY_FIRE_COOLDOWN = Math.round(((PLAYER_FIRE_COOLDOWN / 0.7) * 2) * 2)
 const MAX_PLAYER_BULLETS = 1
 const BRICK_HP = 3
 const ENEMY_HP = 5
+const MP_ENEMY_HP = 3
 const PLAYER_HP = 3
+const MP_PLAYER_HP = 3
 const ENEMY_AGGRO_RANGE = TILE * 20
 const BGM_SRC = '/audio/suspense.mp3'
 const SFX_EXPLOSION = '/audio/explosion.ogg'
@@ -24,6 +26,7 @@ const POWERUP_DURATION = 30000
 const POWERUP_SPAWN_INTERVAL = 12000
 const POWERUP_LIFETIME = 10000
 const GAME_TIME = 150000
+const MP_GAME_TIME = 180000
 const EXTRA_ENEMY_INTERVAL = 50000
 const WS_PORT = 10087
 const DIRECTIONS = ['up', 'right', 'down', 'left']
@@ -65,6 +68,8 @@ const stats = ref({
   player2Lives: 3,
   enemyLeft: 10,
   score: 0,
+  killsA: 0,
+  killsB: 0,
 })
 
 let ctx = null
@@ -73,6 +78,7 @@ let lastTime = 0
 let lastEnemySpawn = 0
 let lastPowerupSpawn = 0
 let enemyDecisionTimer = 0
+let mpTime = 0
 let gameTime = 0
 let state
 let bgm = null
@@ -316,20 +322,8 @@ function startMultiplayer() {
     state.player2.y = 2 * TILE
     state.player2.colorMain = '#9bd2ff'
     state.player2.colorAccent = '#2b6cb0'
-    state.baseA = {
-      x: 1 * TILE,
-      y: 24 * TILE,
-      w: 2 * TILE,
-      h: 2 * TILE,
-      alive: true,
-    }
-    state.baseB = {
-      x: 23 * TILE,
-      y: 24 * TILE,
-      w: 2 * TILE,
-      h: 2 * TILE,
-      alive: true,
-    }
+    state.baseA = null
+    state.baseB = null
     state.enemyQueue = 0
     state.enemies = []
   }
@@ -435,7 +429,7 @@ function createMap() {
   return map
 }
 
-function createPlayer() {
+function createPlayer(isMultiplayerMode = false) {
   return {
     kind: 'player',
     x: 12 * TILE,
@@ -444,8 +438,8 @@ function createPlayer() {
     renderSize: 15,
     dir: 'up',
     speed: PLAYER_SPEED,
-    hp: PLAYER_HP,
-    maxHp: PLAYER_HP,
+    hp: isMultiplayerMode ? MP_PLAYER_HP : PLAYER_HP,
+    maxHp: isMultiplayerMode ? MP_PLAYER_HP : PLAYER_HP,
     colorMain: COLORS.playerMain,
     colorAccent: COLORS.playerAccent,
     fireCooldown: 0,
@@ -459,17 +453,18 @@ function createPlayer() {
   }
 }
 
-function createEnemy(spawnX) {
+function createEnemy(spawnX, spawnY = 0, hpOverride = null) {
+  const hpValue = hpOverride ?? ENEMY_HP
   return {
     kind: 'enemy',
     x: spawnX,
-    y: 0,
+    y: spawnY,
     size: 14,
     renderSize: 15,
     dir: 'down',
     speed: ENEMY_SPEED,
-    hp: ENEMY_HP,
-    maxHp: ENEMY_HP,
+    hp: hpValue,
+    maxHp: hpValue,
     colorMain: COLORS.enemyMain,
     colorAccent: COLORS.enemyAccent,
     fireCooldown: ENEMY_FIRE_COOLDOWN * (0.35 + Math.random() * 0.5),
@@ -477,39 +472,45 @@ function createEnemy(spawnX) {
     lastDir: 'down',
     aiTurnIn: 500 + Math.random() * 1200,
     spawnShield: 800,
+    targetKind: null,
   }
 }
 
 function resetState() {
   state = {
-    player: createPlayer(),
+    player: createPlayer(isMultiplayer.value),
     enemies: [],
     bullets: [],
     particles: [],
     powerups: [],
     obstacles: createMap(),
-    base: {
-      x: 12 * TILE,
-      y: 24 * TILE,
-      w: 2 * TILE,
-      h: 2 * TILE,
-      alive: true,
-    },
+      base: mode.value === 'single'
+        ? {
+            x: 12 * TILE,
+            y: 24 * TILE,
+            w: 2 * TILE,
+            h: 2 * TILE,
+            alive: true,
+          }
+        : null,
     enemyQueue: 10,
     extraEnemiesSpawned: 0,
     gameOver: false,
     victory: false,
   }
-  stats.value = {
-    playerLives: 3,
-    player2Lives: 3,
-    enemyLeft: state.enemyQueue,
-    score: 0,
-  }
+    stats.value = {
+      playerLives: 3,
+      player2Lives: 3,
+      enemyLeft: state.enemyQueue,
+      score: 0,
+      killsA: 0,
+      killsB: 0,
+    }
   statusText.value = '按方向键移动，空格发射，守住基地。'
-  lastEnemySpawn = 0
-  lastPowerupSpawn = 0
-  enemyDecisionTimer = 0
+    lastEnemySpawn = 0
+    lastPowerupSpawn = 0
+    enemyDecisionTimer = 0
+    mpTime = 0
   gameTime = 0
 }
 
@@ -867,28 +868,75 @@ function handleTankInput(tank, controlSet, deltaMs, trackMoving) {
 }
 
 function spawnEnemy(now) {
-  if (state.enemyQueue <= 0 || state.enemies.filter((enemy) => enemy.alive).length >= 2) {
-    return
+  const aliveCount = state.enemies.filter((enemy) => enemy.alive).length
+  if (isMultiplayer.value) {
+    if (aliveCount >= 2) {
+      return
+    }
+  } else {
+    if (state.enemyQueue <= 0 || aliveCount >= 2) {
+      return
+    }
   }
-  if (now - lastEnemySpawn < 1800) {
-    return
-  }
-
-  const spawnPoints = [0, 12 * TILE, 24 * TILE]
-  const available = spawnPoints.filter((spawnX) => {
-    const probe = { x: spawnX, y: 0, w: 14, h: 14 }
-    return !isBlocked(probe)
-  })
-
-  if (available.length === 0) {
+  if (!isMultiplayer.value && now - lastEnemySpawn < 1800) {
     return
   }
 
-  const spawnX = available[Math.floor(Math.random() * available.length)]
-  state.enemies.push(createEnemy(spawnX))
-  state.enemyQueue -= 1
+  let spawnX = null
+  let spawnY = null
+
+  if (isMultiplayer.value) {
+    for (let tries = 0; tries < 20; tries += 1) {
+      const sideX = Math.random() > 0.5 ? 0 : 24 * TILE
+      const row = Math.floor(Math.random() * BOARD_ROWS)
+      const candidateY = row * TILE
+      const probe = { x: sideX, y: candidateY, w: 14, h: 14 }
+      if (!isBlocked(probe)) {
+        spawnX = sideX
+        spawnY = candidateY
+        break
+      }
+    }
+  } else {
+    const spawnPoints = [0, 12 * TILE, 24 * TILE]
+    const available = spawnPoints.filter((x) => {
+      const probe = { x, y: 0, w: 14, h: 14 }
+      return !isBlocked(probe)
+    })
+    if (available.length) {
+      spawnX = available[Math.floor(Math.random() * available.length)]
+      spawnY = 0
+    }
+  }
+
+  if (spawnX === null) {
+    return
+  }
+
+  state.enemies.push(createEnemy(spawnX, spawnY, isMultiplayer.value ? MP_ENEMY_HP : null))
+  if (!isMultiplayer.value) {
+    state.enemyQueue -= 1
+  }
   stats.value.enemyLeft = state.enemyQueue + state.enemies.filter((enemy) => enemy.alive).length
   lastEnemySpawn = now
+}
+
+function getEnemyTarget(enemy) {
+  if (!isMultiplayer.value || !state.player2) {
+    return state.player
+  }
+
+  if (!enemy.targetKind) {
+    const targetCounts = { player: 0, player2: 0 }
+    for (const e of state.enemies) {
+      if (!e.alive) continue
+      if (e.targetKind === 'player') targetCounts.player += 1
+      if (e.targetKind === 'player2') targetCounts.player2 += 1
+    }
+    enemy.targetKind = targetCounts.player <= targetCounts.player2 ? 'player' : 'player2'
+  }
+
+  return enemy.targetKind === 'player2' ? state.player2 : state.player
 }
 
 function spawnExtraEnemy(now) {
@@ -905,9 +953,10 @@ function spawnExtraEnemy(now) {
     return
   }
 
+  let spawnX = null
   const spawnPoints = [0, 12 * TILE, 24 * TILE]
-  const available = spawnPoints.filter((spawnX) => {
-    const probe = { x: spawnX, y: 0, w: 14, h: 14 }
+  const available = spawnPoints.filter((x) => {
+    const probe = { x, y: 0, w: 14, h: 14 }
     return !isBlocked(probe)
   })
 
@@ -915,14 +964,14 @@ function spawnExtraEnemy(now) {
     return
   }
 
-  const spawnX = available[Math.floor(Math.random() * available.length)]
-  state.enemies.push(createEnemy(spawnX))
+  spawnX = available[Math.floor(Math.random() * available.length)]
+  state.enemies.push(createEnemy(spawnX, 0))
   state.extraEnemiesSpawned += 1
   statusText.value = '敌军增援到达！'
 }
 
 function chooseEnemyDirection(enemy) {
-  const player = state.player
+  const player = getEnemyTarget(enemy)
   const passable = getPassableDirections(enemy)
   if (passable.length === 0) {
     return
@@ -965,6 +1014,12 @@ function chooseEnemyDirection(enemy) {
 function updateEnemies(deltaMs, now) {
   enemyDecisionTimer += deltaMs
 
+  if (isMultiplayer.value) {
+    while (state.enemies.filter((enemy) => enemy.alive).length < 2) {
+      spawnEnemy(now)
+    }
+  }
+
   for (const enemy of state.enemies) {
     if (!enemy.alive) {
       continue
@@ -974,7 +1029,8 @@ function updateEnemies(deltaMs, now) {
     enemy.fireCooldown -= deltaMs
     enemy.spawnShield = Math.max(0, enemy.spawnShield - deltaMs)
 
-    const distanceToPlayer = Math.hypot(state.player.x - enemy.x, state.player.y - enemy.y)
+    const target = getEnemyTarget(enemy)
+    const distanceToPlayer = Math.hypot(target.x - enemy.x, target.y - enemy.y)
     const playerNearby = distanceToPlayer <= ENEMY_AGGRO_RANGE
 
     if (playerNearby) {
@@ -998,7 +1054,7 @@ function updateEnemies(deltaMs, now) {
     }
 
     if (enemy.fireCooldown <= 0) {
-      const lockDir = getEnemyAttackDirection(enemy, state.player)
+      const lockDir = getEnemyAttackDirection(enemy, target)
 
       if (lockDir) {
         enemy.dir = lockDir
@@ -1017,10 +1073,12 @@ function updateEnemies(deltaMs, now) {
   }
 
   spawnEnemy(now)
-  spawnExtraEnemy(now)
+  if (!isMultiplayer.value) {
+    spawnExtraEnemy(now)
+  }
 }
 
-function damageTank(tank, damage) {
+  function damageTank(tank, damage, attackerKind = null) {
   if (!tank.alive) {
     return
   }
@@ -1038,21 +1096,43 @@ function damageTank(tank, damage) {
   playSfx(SFX_EXPLOSION, 0.6)
   explode(tank.x + tank.size / 2, tank.y + tank.size / 2, tank.colorMain)
 
-  if (tank.kind === 'enemy') {
-    stats.value.score += 100
-    stats.value.enemyLeft = state.enemyQueue + state.enemies.filter((enemy) => enemy.alive).length
-    if (state.enemyQueue === 0 && state.enemies.every((enemy) => !enemy.alive)) {
-      state.victory = true
-      state.gameOver = true
-      statusText.value = '胜利，你守住了基地。按 Enter 重新开始。'
-    }
-    } else {
+    if (tank.kind === 'enemy') {
+      stats.value.score += 100
+      stats.value.enemyLeft = state.enemyQueue + state.enemies.filter((enemy) => enemy.alive).length
+      if (!isMultiplayer.value && state.enemyQueue === 0 && state.enemies.every((enemy) => !enemy.alive)) {
+        state.victory = true
+        state.gameOver = true
+        statusText.value = '胜利，你守住了基地。按 Enter 重新开始。'
+      }
+      } else {
       if (tank.hp > 0) {
         statusText.value = `我方坦克剩余 ${tank.hp} 点耐久。`
       } else if (tank.kind === 'player2') {
-        stats.value.player2Lives -= 1
-        if (stats.value.player2Lives > 0) {
-          const respawn = createPlayer()
+        if (!isMultiplayer.value) {
+          stats.value.player2Lives -= 1
+        }
+        if (isMultiplayer.value) {
+          stats.value.killsA += 1
+          if (stats.value.killsA >= 10) {
+            state.gameOver = true
+            statusText.value = '黄色坦克 10 次击杀，获胜！'
+            if (isHost.value) {
+              ws?.readyState === WebSocket.OPEN &&
+                ws.send(JSON.stringify({ type: 'end', winner: 'host' }))
+            }
+          }
+        }
+        if (isMultiplayer.value) {
+          const respawn = createPlayer(true)
+          respawn.kind = 'player2'
+          respawn.x = 12 * TILE
+          respawn.y = 2 * TILE
+          respawn.colorMain = '#9bd2ff'
+          respawn.colorAccent = '#2b6cb0'
+          state.player2 = respawn
+          statusText.value = '蓝色坦克被击毁，已复活。'
+        } else if (stats.value.player2Lives > 0) {
+          const respawn = createPlayer(false)
           respawn.kind = 'player2'
           respawn.x = 12 * TILE
           respawn.y = 2 * TILE
@@ -1065,9 +1145,25 @@ function damageTank(tank, damage) {
           statusText.value = '蓝色坦克耗尽生命，游戏结束。'
         }
       } else {
-        stats.value.playerLives -= 1
-        if (stats.value.playerLives > 0) {
-          state.player = createPlayer()
+        if (!isMultiplayer.value) {
+          stats.value.playerLives -= 1
+        }
+        if (isMultiplayer.value) {
+          stats.value.killsB += 1
+          if (stats.value.killsB >= 10) {
+            state.gameOver = true
+            statusText.value = '蓝色坦克 10 次击杀，获胜！'
+            if (isHost.value) {
+              ws?.readyState === WebSocket.OPEN &&
+                ws.send(JSON.stringify({ type: 'end', winner: 'guest' }))
+            }
+          }
+        }
+        if (isMultiplayer.value) {
+          state.player = createPlayer(true)
+          statusText.value = '黄色坦克被击毁，已复活。'
+        } else if (stats.value.playerLives > 0) {
+          state.player = createPlayer(false)
           statusText.value = `你被击毁了，剩余生命 ${stats.value.playerLives}。`
         } else {
           state.gameOver = true
@@ -1154,34 +1250,23 @@ function updateBullets(deltaMs) {
 
     if (state.base && state.base.alive && rectsOverlap(rect, state.base)) {
       state.base.alive = false
-      state.gameOver = true
       bullet.alive = false
       explode(state.base.x + TILE, state.base.y + TILE, COLORS.base)
-      statusText.value = '基地被摧毁了。按 Enter 重新开始。'
+      statusText.value = '总部被摧毁。'
       continue
     }
 
     if (state.baseA && state.baseA.alive && rectsOverlap(rect, state.baseA)) {
       state.baseA.alive = false
-      state.gameOver = true
       bullet.alive = false
       explode(state.baseA.x + TILE, state.baseA.y + TILE, COLORS.base)
-      statusText.value = bullet.owner === 'player' ? '你摧毁了对方总部，获胜！' : '你的总部被摧毁了，失败。'
-      if (isMultiplayer.value && isHost.value) {
-        ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: 'end', winner: bullet.owner === 'player' ? 'host' : 'guest' }))
-      }
       continue
     }
 
     if (state.baseB && state.baseB.alive && rectsOverlap(rect, state.baseB)) {
       state.baseB.alive = false
-      state.gameOver = true
       bullet.alive = false
       explode(state.baseB.x + TILE, state.baseB.y + TILE, COLORS.base)
-      statusText.value = bullet.owner === 'player2' ? '你摧毁了对方总部，获胜！' : '你的总部被摧毁了，失败。'
-      if (isMultiplayer.value && isHost.value) {
-        ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: 'end', winner: bullet.owner === 'player2' ? 'guest' : 'host' }))
-      }
       continue
     }
 
@@ -1199,7 +1284,7 @@ function updateBullets(deltaMs) {
       }
       if (rectsOverlap(rect, tankRect(target))) {
         bullet.alive = false
-        damageTank(target, bullet.damage)
+        damageTank(target, bullet.damage, bullet.owner)
         break
       }
     }
@@ -1239,14 +1324,35 @@ function tick(now) {
   const deltaMs = Math.min(now - lastTime || 16.67, 33.34)
   lastTime = now
 
-    if (!state.gameOver) {
-      gameTime += deltaMs
-    
-    if (gameTime >= GAME_TIME && !state.victory) {
-      state.gameOver = true
-      state.victory = true
-      statusText.value = '时间到！你成功守住了基地。按 Enter 重新开始。'
-    }
+      if (!state.gameOver) {
+        if (isMultiplayer.value) {
+          mpTime += deltaMs
+          if (mpTime >= MP_GAME_TIME && !state.gameOver) {
+            state.gameOver = true
+            const winner =
+              stats.value.killsA === stats.value.killsB
+                ? 'draw'
+                : stats.value.killsA > stats.value.killsB
+                  ? 'host'
+                  : 'guest'
+            statusText.value = winner === 'draw'
+              ? '时间到，平局。'
+              : winner === 'host'
+                ? '时间到，你获胜！'
+                : '时间到，你失败。'
+            if (isMultiplayer.value && isHost.value) {
+              ws?.readyState === WebSocket.OPEN &&
+                ws.send(JSON.stringify({ type: 'end', winner }))
+            }
+          }
+        } else {
+          gameTime += deltaMs
+          if (gameTime >= GAME_TIME && !state.victory) {
+            state.gameOver = true
+            state.victory = true
+            statusText.value = '时间到！你成功守住了基地。按 Enter 重新开始。'
+          }
+        }
 
         if (!isMultiplayer.value || isHost.value) {
           state.player.fireCooldown -= deltaMs
@@ -1355,25 +1461,26 @@ function drawTank(tank) {
   ctx.restore()
 
   // 生命条
-  if (tank.kind === 'player') {
-    const hpRatio = tank.hp / tank.maxHp
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
-    ctx.fillRect(x + renderOffset - 1, y + renderOffset - 7, renderSize + 2, 4)
-    ctx.fillStyle = tank.buffs.armorActive ? '#4ade80' : '#fbbf24'
-    ctx.fillRect(x + renderOffset, y + renderOffset - 6, renderSize * hpRatio, 2)
-    
-    // 能量效果（如果有增益）
-    if (tank.buffs.powerUntil > 0) {
-      ctx.strokeStyle = 'rgba(255, 112, 67, 0.6)'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.arc(x + renderOffset + renderSize / 2, y + renderOffset + renderSize / 2, renderSize / 2 + 2, 0, Math.PI * 2)
-      ctx.stroke()
-    }
-    if (tank.buffs.speedUntil > 0) {
-      ctx.strokeStyle = 'rgba(41, 182, 246, 0.5)'
-      ctx.lineWidth = 1
-      ctx.beginPath()
+    if (tank.kind === 'player' || tank.kind === 'player2') {
+      const hpRatio = tank.hp / tank.maxHp
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+      ctx.fillRect(x + renderOffset - 1, y + renderOffset - 7, renderSize + 2, 4)
+      const armorActive = tank.buffs?.armorActive
+      ctx.fillStyle = armorActive ? '#4ade80' : tank.kind === 'player2' ? '#60a5fa' : '#fbbf24'
+      ctx.fillRect(x + renderOffset, y + renderOffset - 6, renderSize * hpRatio, 2)
+      
+      // 能量效果（如果有增益）
+      if (tank.buffs?.powerUntil > 0) {
+        ctx.strokeStyle = 'rgba(255, 112, 67, 0.6)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.arc(x + renderOffset + renderSize / 2, y + renderOffset + renderSize / 2, renderSize / 2 + 2, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      if (tank.buffs?.speedUntil > 0) {
+        ctx.strokeStyle = 'rgba(41, 182, 246, 0.5)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
       ctx.arc(x + renderOffset + renderSize / 2, y + renderOffset + renderSize / 2, renderSize / 2 + 3, 0, Math.PI * 2)
       ctx.stroke()
     }
@@ -1467,21 +1574,11 @@ function drawScene() {
     }
   }
 
-  if (state.base && state.base.alive) {
-    drawTileRect(state.base.x, state.base.y, state.base.w, state.base.h, COLORS.base, '#f2db87')
-    ctx.fillStyle = '#573500'
-    ctx.fillRect(state.base.x + 9, state.base.y + 9, 14, 14)
-  }
-  if (state.baseA && state.baseA.alive) {
-    drawTileRect(state.baseA.x, state.baseA.y, state.baseA.w, state.baseA.h, '#7fd3ff', '#c3edff')
-    ctx.fillStyle = '#0b2c4d'
-    ctx.fillRect(state.baseA.x + 9, state.baseA.y + 9, 14, 14)
-  }
-  if (state.baseB && state.baseB.alive) {
-    drawTileRect(state.baseB.x, state.baseB.y, state.baseB.w, state.baseB.h, '#ff9a7a', '#ffd0c2')
-    ctx.fillStyle = '#4a1b0b'
-    ctx.fillRect(state.baseB.x + 9, state.baseB.y + 9, 14, 14)
-  }
+    if (state.base && state.base.alive) {
+      drawTileRect(state.base.x, state.base.y, state.base.w, state.base.h, COLORS.base, '#f2db87')
+      ctx.fillStyle = '#573500'
+      ctx.fillRect(state.base.x + 9, state.base.y + 9, 14, 14)
+    }
 
   state.powerups.forEach(drawPowerup)
 
@@ -1557,14 +1654,17 @@ function drawScene() {
 
   ctx.font = '14px monospace'
   ctx.fillText(`TIME ${Math.max(0, Math.ceil((GAME_TIME - gameTime) / 1000))}`, BOARD_COLS * TILE + 18, 96)
-  ctx.fillText(`LIFE ${stats.value.playerLives}`, BOARD_COLS * TILE + 18, 120)
+  ctx.fillText(`LIFE ${isMultiplayer.value ? '∞' : stats.value.playerLives}`, BOARD_COLS * TILE + 18, 120)
   ctx.fillText(`HP ${state.player.hp}`, BOARD_COLS * TILE + 18, 142)
   if (state.player2) {
-    ctx.fillText(`P2 ${stats.value.player2Lives}`, BOARD_COLS * TILE + 18, 164)
+    ctx.fillText(`P2 ${isMultiplayer.value ? '∞' : stats.value.player2Lives}`, BOARD_COLS * TILE + 18, 164)
   }
   ctx.fillText(`LEFT ${stats.value.enemyLeft}`, BOARD_COLS * TILE + 18, 186)
-  ctx.fillText('SCORE', BOARD_COLS * TILE + 18, 206)
-  ctx.fillText(`${stats.value.score}`, BOARD_COLS * TILE + 18, 228)
+  if (isMultiplayer.value) {
+    ctx.fillText(`K ${stats.value.killsA}-${stats.value.killsB}`, BOARD_COLS * TILE + 18, 208)
+  }
+  ctx.fillText('SCORE', BOARD_COLS * TILE + 18, 230)
+  ctx.fillText(`${stats.value.score}`, BOARD_COLS * TILE + 18, 252)
   ctx.fillText(`P ${state.player.buffs.powerUntil > 0 ? Math.ceil(state.player.buffs.powerUntil / 1000) : 0}`, BOARD_COLS * TILE + 18, 252)
   ctx.fillText(`S ${state.player.buffs.speedUntil > 0 ? Math.ceil(state.player.buffs.speedUntil / 1000) : 0}`, BOARD_COLS * TILE + 18, 274)
   ctx.fillText('MOVE', BOARD_COLS * TILE + 18, 292)

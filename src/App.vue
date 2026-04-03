@@ -413,44 +413,99 @@ function createFortressRect(col, row) {
   }
 }
 
-function createMap() {
+function createMap(options = {}) {
+  const { random = false, preserveBaseRing = false } = options
   const map = []
 
-  ;[
-    [2, 3, 4, 2],
-    [20, 3, 4, 2],
-    [6, 8, 3, 3],
-    [17, 8, 3, 3],
-    [3, 14, 4, 2],
-    [19, 14, 4, 2],
-    [8, 18, 10, 2],
-    [10, 21, 2, 1],
-    [14, 21, 2, 1],
-  ].forEach(([c, r, w, h]) => map.push(...createBrickCluster(c, r, w, h)))
+  if (!random) {
+    ;[
+      [2, 3, 4, 2],
+      [20, 3, 4, 2],
+      [6, 8, 3, 3],
+      [17, 8, 3, 3],
+      [3, 14, 4, 2],
+      [19, 14, 4, 2],
+      [8, 18, 10, 2],
+      [10, 21, 2, 1],
+      [14, 21, 2, 1],
+    ].forEach(([c, r, w, h]) => map.push(...createBrickCluster(c, r, w, h)))
 
-  ;[
-    [11, 5, 4, 2],
-    [0, 10, 2, 4],
-    [24, 10, 2, 4],
-    [11, 11, 4, 1],
-    [11, 23, 1, 2],
-    [14, 23, 1, 2],
-  ].forEach(([c, r, w, h]) => map.push(createSteelRect(c, r, w, h)))
+    ;[
+      [11, 5, 4, 2],
+      [0, 10, 2, 4],
+      [24, 10, 2, 4],
+      [11, 11, 4, 1],
+      [11, 23, 1, 2],
+      [14, 23, 1, 2],
+    ].forEach(([c, r, w, h]) => map.push(createSteelRect(c, r, w, h)))
 
-  ;[
-    [9, 3, 2, 2],
-    [15, 3, 2, 2],
-    [5, 11, 4, 2],
-    [17, 11, 4, 2],
-    [8, 15, 2, 2],
-    [16, 15, 2, 2],
-  ].forEach(([c, r, w, h]) => map.push(createForestRect(c, r, w, h)))
+    ;[
+      [9, 3, 2, 2],
+      [15, 3, 2, 2],
+      [5, 11, 4, 2],
+      [17, 11, 4, 2],
+      [8, 15, 2, 2],
+      [16, 15, 2, 2],
+    ].forEach(([c, r, w, h]) => map.push(createForestRect(c, r, w, h)))
 
-  ;[
-    [11, 15, 4, 2],
-    [2, 19, 4, 2],
-    [20, 19, 4, 2],
-  ].forEach(([c, r, w, h]) => map.push(createWaterRect(c, r, w, h)))
+    ;[
+      [11, 15, 4, 2],
+      [2, 19, 4, 2],
+      [20, 19, 4, 2],
+    ].forEach(([c, r, w, h]) => map.push(createWaterRect(c, r, w, h)))
+
+    return map
+  }
+
+  const reserved = []
+  const addReservedRect = (col, row, width, height) => {
+    reserved.push({ x: col * TILE, y: row * TILE, w: width * TILE, h: height * TILE })
+  }
+  const isOverlapping = (rect, list) => list.some((item) => rectsOverlap(rect, item))
+
+  if (preserveBaseRing) {
+    const baseCol = 12
+    const baseRow = 24
+    addReservedRect(baseCol - 1, baseRow - 1, 4, 4)
+  }
+  addReservedRect(11, 21, 4, 3)
+  addReservedRect(11, 1, 4, 3)
+  addReservedRect(0, 0, 2, 2)
+  addReservedRect(24, 0, 2, 2)
+
+  const tryPlace = (factory, minW, maxW, minH, maxH, count) => {
+    for (let i = 0; i < count; i += 1) {
+      let placed = false
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const width = minW + Math.floor(Math.random() * (maxW - minW + 1))
+        const height = minH + Math.floor(Math.random() * (maxH - minH + 1))
+        const col = Math.floor(Math.random() * (BOARD_COLS - width))
+        const row = Math.floor(Math.random() * (BOARD_ROWS - height))
+        const rect = { x: col * TILE, y: row * TILE, w: width * TILE, h: height * TILE }
+        if (isOverlapping(rect, reserved)) {
+          continue
+        }
+        const items = factory(col, row, width, height)
+        const list = Array.isArray(items) ? items : [items]
+        if (list.some((item) => isOverlapping(item, map))) {
+          continue
+        }
+        map.push(...list)
+        placed = true
+        break
+      }
+      if (!placed) {
+        continue
+      }
+    }
+  }
+
+  const makeCluster = (col, row, width, height) => createBrickCluster(col, row, width, height)
+
+  tryPlace(makeCluster, 2, 3, 1, 2, 18)
+  tryPlace(createSteelRect, 1, 2, 1, 2, 8)
+  tryPlace(createForestRect, 2, 3, 1, 2, 8)
+  tryPlace(createWaterRect, 2, 3, 1, 2, 6)
 
   return map
 }
@@ -509,7 +564,7 @@ function resetState() {
     bullets: [],
     particles: [],
     powerups: [],
-    obstacles: createMap(),
+    obstacles: createMap({ random: true, preserveBaseRing: !isMultiplayer.value }),
     fortress: {
       until: 0,
       obstacles: [],

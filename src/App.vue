@@ -17,6 +17,7 @@ const BRICK_HP = 3
 const ENEMY_HP = 5
 const MP_ENEMY_HP = 3
 const PLAYER_HP = 3
+const SINGLE_LIVES = 3
 const MP_PLAYER_HP = 3
 const ENEMY_AGGRO_RANGE = TILE * 20
 const BGM_SRC = '/audio/suspense.mp3'
@@ -25,6 +26,8 @@ const SFX_POWERUP = '/audio/powerup.ogg'
 const POWERUP_DURATION = 30000
 const POWERUP_SPAWN_INTERVAL = 12000
 const POWERUP_LIFETIME = 10000
+const FORTIFY_DURATION = 20000
+const BOMB_SPAWN_INTERVAL = 6000
 const GAME_TIME = 150000
 const MP_GAME_TIME = 180000
 const EXTRA_ENEMY_INTERVAL = 50000
@@ -120,6 +123,18 @@ const powerupTypes = {
     label: '装甲',
     color: '#66bb6a',
     accent: '#e0f6d5',
+    duration: 0,
+  },
+  fortress: {
+    label: '加固',
+    color: '#c18f59',
+    accent: '#f2d3aa',
+    duration: FORTIFY_DURATION,
+  },
+  bomb: {
+    label: '爆破',
+    color: '#ff6b35',
+    accent: '#ffe0d4',
     duration: 0,
   },
 }
@@ -387,6 +402,17 @@ function createWaterRect(col, row, width = 1, height = 1) {
   }
 }
 
+function createFortressRect(col, row) {
+  return {
+    x: col * TILE,
+    y: row * TILE,
+    w: TILE,
+    h: TILE,
+    type: 'fortress',
+    hp: Infinity,
+  }
+}
+
 function createMap() {
   const map = []
 
@@ -484,7 +510,12 @@ function resetState() {
     particles: [],
     powerups: [],
     obstacles: createMap(),
-      base: mode.value === 'single'
+    fortress: {
+      until: 0,
+      obstacles: [],
+    },
+    bombSpawnSlow: false,
+    base: mode.value === 'single'
         ? {
             x: 12 * TILE,
             y: 24 * TILE,
@@ -498,19 +529,22 @@ function resetState() {
     gameOver: false,
     victory: false,
   }
-    stats.value = {
-      playerLives: 3,
-      player2Lives: 3,
-      enemyLeft: state.enemyQueue,
-      score: 0,
-      killsA: 0,
-      killsB: 0,
-    }
+  if (!isMultiplayer.value) {
+    addBaseBrickRing()
+  }
+  stats.value = {
+    playerLives: isMultiplayer.value ? 3 : SINGLE_LIVES,
+    player2Lives: 3,
+    enemyLeft: state.enemyQueue,
+    score: 0,
+    killsA: 0,
+    killsB: 0,
+  }
   statusText.value = '按方向键移动，空格发射，守住基地。'
-    lastEnemySpawn = 0
-    lastPowerupSpawn = 0
-    enemyDecisionTimer = 0
-    mpTime = 0
+  lastEnemySpawn = 0
+  lastPowerupSpawn = 0
+  enemyDecisionTimer = 0
+  mpTime = 0
   gameTime = 0
 }
 
@@ -654,6 +688,63 @@ function createPowerup(type, x, y) {
   }
 }
 
+function addBaseFortress() {
+  if (!state.base) {
+    return
+  }
+  const baseCol = Math.round(state.base.x / TILE)
+  const baseRow = Math.round(state.base.y / TILE)
+  const ring = []
+  for (let r = baseRow - 1; r <= baseRow + 2; r += 1) {
+    for (let c = baseCol - 1; c <= baseCol + 2; c += 1) {
+      if (r < 0 || r >= BOARD_ROWS || c < 0 || c >= BOARD_COLS) {
+        continue
+      }
+      const insideBase = c >= baseCol && c <= baseCol + 1 && r >= baseRow && r <= baseRow + 1
+      if (insideBase) {
+        continue
+      }
+      ring.push(createFortressRect(c, r))
+    }
+  }
+  state.obstacles.push(...ring)
+  state.fortress.obstacles = ring
+  state.fortress.until = FORTIFY_DURATION
+}
+
+function addBaseBrickRing() {
+  if (!state.base) {
+    return
+  }
+  const baseCol = Math.round(state.base.x / TILE)
+  const baseRow = Math.round(state.base.y / TILE)
+  state.obstacles = state.obstacles.filter((obstacle) => {
+    if (obstacle.type !== 'steel') {
+      return true
+    }
+    const col = Math.round(obstacle.x / TILE)
+    const row = Math.round(obstacle.y / TILE)
+    const inRing = col >= baseCol - 1 && col <= baseCol + 2 && row >= baseRow - 1 && row <= baseRow + 2
+    return !inRing
+  })
+  const ring = []
+  for (let r = baseRow - 1; r <= baseRow + 2; r += 1) {
+    for (let c = baseCol - 1; c <= baseCol + 2; c += 1) {
+      if (r < 0 || r >= BOARD_ROWS || c < 0 || c >= BOARD_COLS) {
+        continue
+      }
+      const insideBase = c >= baseCol && c <= baseCol + 1 && r >= baseRow && r <= baseRow + 1
+      if (insideBase) {
+        continue
+      }
+        const brick = createBrickRect(c, r)
+        brick.canBeDestroyed = true
+        ring.push(brick)
+    }
+  }
+  state.obstacles.push(...ring)
+}
+
 function spawnPowerup(now) {
   if (now - lastPowerupSpawn < POWERUP_SPAWN_INTERVAL || state.powerups.length >= 1) {
     return
@@ -673,14 +764,16 @@ function spawnPowerup(now) {
     return
   }
 
-  const types = ['power', 'speed', 'armor']
+  const types = isMultiplayer.value
+    ? ['power', 'speed', 'armor']
+    : ['power', 'speed', 'armor', 'fortress', 'bomb']
   const spot = candidates[Math.floor(Math.random() * candidates.length)]
   const type = types[Math.floor(Math.random() * types.length)]
   state.powerups.push(createPowerup(type, spot.x, spot.y))
   lastPowerupSpawn = now
 }
 
-function applyPowerup(type, tank = state.player) {
+function applyPowerup(type, tank = state.player, now = 0) {
   playSfx(SFX_POWERUP, 0.45)
   if (type === 'power') {
     tank.buffs.powerUntil = POWERUP_DURATION
@@ -694,10 +787,29 @@ function applyPowerup(type, tank = state.player) {
     return
   }
 
+  if (type === 'bomb' && !isMultiplayer.value) {
+    for (const enemy of state.enemies) {
+      if (!enemy.alive) {
+        continue
+      }
+      enemy.alive = false
+      explode(enemy.x + enemy.size / 2, enemy.y + enemy.size / 2, COLORS.enemyAccent)
+    }
+    state.bombSpawnSlow = true
+    lastEnemySpawn = now
+    stats.value.enemyLeft = state.enemyQueue + state.enemies.filter((enemy) => enemy.alive).length
+    statusText.value = '爆破炸弹引爆，全屏敌军清除。'
+    return
+  }
+
   tank.buffs.armorActive = true
   tank.maxHp = 6
   tank.hp = Math.max(tank.hp, 6)
   statusText.value = '拿到装甲徽章，这条命需要 6 发炮弹才会被击毁。'
+  if (type === 'fortress' && !isMultiplayer.value) {
+    addBaseFortress()
+    statusText.value = '总部加固，20 秒铜墙铁壁。'
+  }
 }
 
 function updatePowerups(deltaMs, now) {
@@ -707,10 +819,10 @@ function updatePowerups(deltaMs, now) {
     item.life -= deltaMs
     if (rectsOverlap(itemRect(item), tankRect(state.player))) {
       item.life = 0
-      applyPowerup(item.type, state.player)
+      applyPowerup(item.type, state.player, now)
     } else if (state.player2 && rectsOverlap(itemRect(item), tankRect(state.player2))) {
       item.life = 0
-      applyPowerup(item.type, state.player2)
+      applyPowerup(item.type, state.player2, now)
     }
   }
 
@@ -718,14 +830,24 @@ function updatePowerups(deltaMs, now) {
 
   state.player.buffs.powerUntil = Math.max(0, state.player.buffs.powerUntil - deltaMs)
   state.player.buffs.speedUntil = Math.max(0, state.player.buffs.speedUntil - deltaMs)
+
+  if (state.fortress.until > 0) {
+    state.fortress.until = Math.max(0, state.fortress.until - deltaMs)
+    if (state.fortress.until === 0 && state.fortress.obstacles.length) {
+      state.obstacles = state.obstacles.filter((item) => !state.fortress.obstacles.includes(item))
+      state.fortress.obstacles = []
+    }
+  }
 }
 
 function getEnemyAttackDirection(enemy, player) {
   const tolerance = 10
   const enemyCenterX = enemy.x + enemy.size / 2
   const enemyCenterY = enemy.y + enemy.size / 2
-  const playerCenterX = player.x + player.size / 2
-  const playerCenterY = player.y + player.size / 2
+  const targetWidth = player.size ?? player.w
+  const targetHeight = player.size ?? player.h
+  const playerCenterX = player.x + targetWidth / 2
+  const playerCenterY = player.y + targetHeight / 2
 
   if (Math.abs(enemyCenterX - playerCenterX) <= tolerance) {
     const top = Math.min(enemyCenterY, playerCenterY)
@@ -813,6 +935,21 @@ function tryMoveTank(tank, distance) {
   }
 }
 
+function moveTankStepwise(tank, distance) {
+  let remaining = distance
+  const step = 1
+  while (remaining > 0.0001) {
+    const delta = Math.min(step, remaining)
+    const beforeX = tank.x
+    const beforeY = tank.y
+    tryMoveTank(tank, delta)
+    if (tank.x === beforeX && tank.y === beforeY) {
+      break
+    }
+    remaining -= delta
+  }
+}
+
 function fireBullet(owner) {
   const activeBullets = state.bullets.filter((bullet) => bullet.owner === owner.kind)
   if ((owner.kind === 'player' || owner.kind === 'player2') && activeBullets.length >= MAX_PLAYER_BULLETS) {
@@ -847,19 +984,20 @@ function handleTankInput(tank, controlSet, deltaMs, trackMoving) {
 
   const speedMultiplier = tank === state.player ? getPlayerSpeedMultiplier() : 1
   const distance = tank.speed * speedMultiplier * (deltaMs / 16.67)
+  const useStepMove = !isMultiplayer.value && tank === state.player && speedMultiplier > 1
 
   if (controlSet.up) {
     tank.dir = 'up'
-    tryMoveTank(tank, distance)
+    useStepMove ? moveTankStepwise(tank, distance) : tryMoveTank(tank, distance)
   } else if (controlSet.down) {
     tank.dir = 'down'
-    tryMoveTank(tank, distance)
+    useStepMove ? moveTankStepwise(tank, distance) : tryMoveTank(tank, distance)
   } else if (controlSet.left) {
     tank.dir = 'left'
-    tryMoveTank(tank, distance)
+    useStepMove ? moveTankStepwise(tank, distance) : tryMoveTank(tank, distance)
   } else if (controlSet.right) {
     tank.dir = 'right'
-    tryMoveTank(tank, distance)
+    useStepMove ? moveTankStepwise(tank, distance) : tryMoveTank(tank, distance)
   }
 
   if (controlSet.fire && tank.fireCooldown <= 0) {
@@ -874,12 +1012,19 @@ function spawnEnemy(now) {
       return
     }
   } else {
-    if (state.enemyQueue <= 0 || aliveCount >= 2) {
+    const maxEnemies = 2 + Math.floor(gameTime / 30000)
+    if (state.enemyQueue <= 0 && aliveCount === 0) {
+      state.enemyQueue = 10
+    }
+    if (state.enemyQueue <= 0 || aliveCount >= maxEnemies) {
       return
     }
   }
-  if (!isMultiplayer.value && now - lastEnemySpawn < 1800) {
-    return
+  if (!isMultiplayer.value) {
+    const interval = state.bombSpawnSlow ? BOMB_SPAWN_INTERVAL : 1800
+    if (now - lastEnemySpawn < interval) {
+      return
+    }
   }
 
   let spawnX = null
@@ -916,15 +1061,26 @@ function spawnEnemy(now) {
   state.enemies.push(createEnemy(spawnX, spawnY, isMultiplayer.value ? MP_ENEMY_HP : null))
   if (!isMultiplayer.value) {
     state.enemyQueue -= 1
+    if (state.bombSpawnSlow) {
+      const maxEnemies = 2 + Math.floor(gameTime / 30000)
+      const afterSpawnCount = aliveCount + 1
+      if (afterSpawnCount >= maxEnemies) {
+        state.bombSpawnSlow = false
+      }
+    }
   }
   stats.value.enemyLeft = state.enemyQueue + state.enemies.filter((enemy) => enemy.alive).length
   lastEnemySpawn = now
 }
 
 function getEnemyTarget(enemy) {
-  if (!isMultiplayer.value || !state.player2) {
-    return state.player
-  }
+    if (!isMultiplayer.value || !state.player2) {
+      const baseAlive = state.base && state.base.alive
+      if (!enemy.targetKind || enemy.aiTurnIn <= 0 || (enemy.targetKind === 'base' && !baseAlive)) {
+        enemy.targetKind = baseAlive && Math.random() < 1 / 2 ? 'base' : 'player'
+      }
+      return enemy.targetKind === 'base' && baseAlive ? state.base : state.player
+    }
 
   if (!enemy.targetKind) {
     const targetCounts = { player: 0, player2: 0 }
@@ -1073,9 +1229,6 @@ function updateEnemies(deltaMs, now) {
   }
 
   spawnEnemy(now)
-  if (!isMultiplayer.value) {
-    spawnExtraEnemy(now)
-  }
 }
 
   function damageTank(tank, damage, attackerKind = null) {
@@ -1096,15 +1249,10 @@ function updateEnemies(deltaMs, now) {
   playSfx(SFX_EXPLOSION, 0.6)
   explode(tank.x + tank.size / 2, tank.y + tank.size / 2, tank.colorMain)
 
-    if (tank.kind === 'enemy') {
-      stats.value.score += 100
-      stats.value.enemyLeft = state.enemyQueue + state.enemies.filter((enemy) => enemy.alive).length
-      if (!isMultiplayer.value && state.enemyQueue === 0 && state.enemies.every((enemy) => !enemy.alive)) {
-        state.victory = true
-        state.gameOver = true
-        statusText.value = '胜利，你守住了基地。按 Enter 重新开始。'
-      }
-      } else {
+      if (tank.kind === 'enemy') {
+        stats.value.score += 100
+        stats.value.enemyLeft = state.enemyQueue + state.enemies.filter((enemy) => enemy.alive).length
+        } else {
       if (tank.hp > 0) {
         statusText.value = `我方坦克剩余 ${tank.hp} 点耐久。`
       } else if (tank.kind === 'player2') {
@@ -1174,7 +1322,7 @@ function updateEnemies(deltaMs, now) {
   }
 
 function damageObstacle(obstacle) {
-  if (obstacle.type !== 'brick') {
+  if (obstacle.type !== 'brick' && !obstacle.canBeDestroyed) {
     return false
   }
 
@@ -1227,7 +1375,7 @@ function updateBullets(deltaMs) {
     }
 
     for (const obstacle of state.obstacles) {
-      if (obstacle.type === 'forest') {
+      if (obstacle.type === 'forest' || obstacle.type === 'water') {
         continue
       }
       if (rectsOverlap(rect, obstacle)) {
@@ -1252,7 +1400,13 @@ function updateBullets(deltaMs) {
       state.base.alive = false
       bullet.alive = false
       explode(state.base.x + TILE, state.base.y + TILE, COLORS.base)
-      statusText.value = '总部被摧毁。'
+      if (!isMultiplayer.value) {
+        state.gameOver = true
+        state.victory = false
+        statusText.value = '总部被摧毁，失败。按 Enter 重新开始。'
+      } else {
+        statusText.value = '总部被摧毁。'
+      }
       continue
     }
 
@@ -1567,6 +1721,8 @@ function drawScene() {
       const brickColor = damageLevel > 0 ? COLORS.brickDamaged : COLORS.brick
       const accent = obstacle.hp === 1 ? '#f1b18f' : '#d48357'
       drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, brickColor, accent)
+    } else if (obstacle.type === 'fortress') {
+      drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, '#b27a3f', '#f0d9b5')
     } else if (obstacle.type === 'steel') {
       drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, COLORS.steel, '#c8d3dd')
     } else if (obstacle.type === 'water') {

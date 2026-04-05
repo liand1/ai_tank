@@ -1,10 +1,17 @@
 import http from 'http'
 import { WebSocketServer } from 'ws'
 
-const server = http.createServer()
+const server = http.createServer(handleHttp)
 const wss = new WebSocketServer({ server })
 
 const rooms = new Map()
+const sessions = new Map()
+const stats = {
+  totalPlays: 0,
+  online: 0,
+  onlineSingle: 0,
+  onlineMulti: 0,
+}
 
 function makeCode() {
   return Math.random().toString(36).slice(2, 7).toUpperCase()
@@ -23,6 +30,155 @@ function broadcast(room, payload) {
 
 function getRoom(code) {
   return rooms.get(code)
+}
+
+function adjustModeCounts(prevMode, nextMode) {
+  if (prevMode === nextMode) return
+  if (prevMode === 'single') stats.onlineSingle = Math.max(0, stats.onlineSingle - 1)
+  if (prevMode === 'multi') stats.onlineMulti = Math.max(0, stats.onlineMulti - 1)
+  if (nextMode === 'single') stats.onlineSingle += 1
+  if (nextMode === 'multi') stats.onlineMulti += 1
+}
+
+function handleHttp(req, res) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, corsHeaders)
+    res.end()
+    return
+  }
+  const url = new URL(req.url, `http://${req.headers.host}`)
+  if (req.method === 'GET' && url.pathname === '/report') {
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' })
+    res.end(`<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Tank 统计</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif; background: #0e0f10; color: #f5f2e6; margin: 0; }
+      .wrap { max-width: 720px; margin: 40px auto; padding: 24px; background: #1a1c20; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+      h1 { font-size: 22px; margin: 0 0 16px; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .card { background: #121318; padding: 16px; border-radius: 12px; border: 1px solid #2a2f36; }
+      .label { font-size: 12px; color: #a3a7b0; margin-bottom: 8px; }
+      .value { font-size: 28px; font-weight: 700; }
+      .note { font-size: 12px; color: #7f8694; margin-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>AI Tank 实时统计</h1>
+      <div class="grid">
+        <div class="card">
+          <div class="label">累计游玩人数</div>
+          <div class="value" id="total">0</div>
+        </div>
+        <div class="card">
+          <div class="label">当前在线</div>
+          <div class="value" id="online">0</div>
+        </div>
+        <div class="card">
+          <div class="label">在线单机</div>
+          <div class="value" id="single">0</div>
+        </div>
+        <div class="card">
+          <div class="label">在线对战</div>
+          <div class="value" id="multi">0</div>
+        </div>
+      </div>
+      <div class="note">每 5 秒自动刷新</div>
+    </div>
+    <script>
+      async function refresh() {
+        const res = await fetch('/report.json');
+        const data = await res.json();
+        document.getElementById('total').textContent = data.totalPlays;
+        document.getElementById('online').textContent = data.online;
+        document.getElementById('single').textContent = data.onlineSingle;
+        document.getElementById('multi').textContent = data.onlineMulti;
+      }
+      refresh();
+      setInterval(refresh, 5000);
+    </script>
+  </body>
+</html>`)
+    return
+  }
+
+  if (req.method === 'GET' && url.pathname === '/report.json') {
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify(stats))
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/track') {
+    let raw = ''
+    req.on('data', (chunk) => {
+      raw += chunk
+      if (raw.length > 1e6) req.destroy()
+    })
+    req.on('end', () => {
+      let payload
+      try {
+        payload = JSON.parse(raw || '{}')
+      } catch {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ ok: false }))
+        return
+      }
+      const id = String(payload.sessionId || '').trim()
+      const mode = payload.mode === 'multi' ? 'multi' : 'single'
+      const action = payload.action
+      if (!id) {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ ok: false }))
+        return
+      }
+
+      const existing = sessions.get(id)
+      if (action === 'join') {
+        if (!existing) {
+          sessions.set(id, { mode, online: true })
+          stats.totalPlays += 1
+          stats.online += 1
+          if (mode === 'single') stats.onlineSingle += 1
+          if (mode === 'multi') stats.onlineMulti += 1
+        } else if (!existing.online) {
+          existing.online = true
+          stats.online += 1
+          adjustModeCounts(null, existing.mode)
+        } else if (existing.mode !== mode) {
+          adjustModeCounts(existing.mode, mode)
+          existing.mode = mode
+        }
+      } else if (action === 'mode') {
+        if (existing && existing.online) {
+          adjustModeCounts(existing.mode, mode)
+          existing.mode = mode
+        }
+      } else if (action === 'leave') {
+        if (existing && existing.online) {
+          existing.online = false
+          stats.online = Math.max(0, stats.online - 1)
+          if (existing.mode === 'single') stats.onlineSingle = Math.max(0, stats.onlineSingle - 1)
+          if (existing.mode === 'multi') stats.onlineMulti = Math.max(0, stats.onlineMulti - 1)
+        }
+      }
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ ok: true }))
+    })
+    return
+  }
+
+  res.writeHead(404, { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' })
+  res.end('Not Found')
 }
 
 wss.on('connection', (ws) => {

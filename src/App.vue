@@ -95,6 +95,37 @@ let remoteControls = {
   fire: false,
 }
 
+const sessionId = Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+function getReportBase() {
+  const wsUrl = getWsUrl()
+  try {
+    const url = new URL(wsUrl)
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+    return url.origin
+  } catch {
+    return ''
+  }
+}
+
+function trackSession(action, nextMode = mode.value) {
+  const base = getReportBase()
+  if (!base) {
+    return
+  }
+  const payload = { sessionId, mode: nextMode, action }
+  if (action === 'leave' && navigator.sendBeacon) {
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+    navigator.sendBeacon(`${base}/track`, blob)
+    return
+  }
+  fetch(`${base}/track`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {})
+}
+
 const controls = {
   up: false,
   down: false,
@@ -271,6 +302,9 @@ function connectWs() {
 }
 
 function selectMode(nextMode) {
+  if (mode.value !== nextMode) {
+    trackSession('mode', nextMode)
+  }
   mode.value = nextMode
   resetState()
   mpStatus.value = 'idle'
@@ -473,39 +507,72 @@ function createMap(options = {}) {
   addReservedRect(0, 0, 2, 2)
   addReservedRect(24, 0, 2, 2)
 
-  const tryPlace = (factory, minW, maxW, minH, maxH, count) => {
-    for (let i = 0; i < count; i += 1) {
-      let placed = false
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        const width = minW + Math.floor(Math.random() * (maxW - minW + 1))
-        const height = minH + Math.floor(Math.random() * (maxH - minH + 1))
-        const col = Math.floor(Math.random() * (BOARD_COLS - width))
-        const row = Math.floor(Math.random() * (BOARD_ROWS - height))
-        const rect = { x: col * TILE, y: row * TILE, w: width * TILE, h: height * TILE }
-        if (isOverlapping(rect, reserved)) {
-          continue
-        }
-        const items = factory(col, row, width, height)
-        const list = Array.isArray(items) ? items : [items]
-        if (list.some((item) => isOverlapping(item, map))) {
-          continue
-        }
-        map.push(...list)
-        placed = true
-        break
-      }
-      if (!placed) {
-        continue
-      }
+  const patternLibrary = [
+    (c, r) => [
+      ...createBrickCluster(c, r, 4, 1),
+      ...createBrickCluster(c, r + 3, 4, 1),
+    ],
+    (c, r) => [
+      ...createBrickCluster(c, r, 1, 4),
+      ...createBrickCluster(c + 3, r, 1, 4),
+    ],
+    (c, r) => [
+      ...createBrickCluster(c, r, 2, 2),
+      ...createBrickCluster(c + 2, r + 2, 2, 2),
+    ],
+    (c, r) => [
+      createSteelRect(c + 1, r, 2, 1),
+      createSteelRect(c + 1, r + 3, 2, 1),
+      createSteelRect(c, r + 1, 1, 2),
+      createSteelRect(c + 3, r + 1, 1, 2),
+    ],
+    (c, r) => [
+      createForestRect(c, r, 2, 2),
+      createForestRect(c + 2, r + 2, 2, 2),
+    ],
+    (c, r) => [
+      createWaterRect(c + 1, r, 2, 2),
+      createWaterRect(c + 1, r + 2, 2, 2),
+    ],
+    (c, r) => [
+      ...createBrickCluster(c, r + 1, 4, 2),
+      createSteelRect(c + 1, r, 2, 1),
+    ],
+    (c, r) => [
+      createForestRect(c, r, 4, 1),
+      createForestRect(c, r + 3, 4, 1),
+      ...createBrickCluster(c + 1, r + 1, 2, 2),
+    ],
+  ]
+
+  const slots = [
+    [2, 3],
+    [8, 3],
+    [16, 3],
+    [20, 3],
+    [2, 9],
+    [8, 9],
+    [16, 9],
+    [20, 9],
+    [2, 15],
+    [8, 15],
+    [16, 15],
+    [20, 15],
+  ]
+
+  const shuffled = [...slots].sort(() => Math.random() - 0.5)
+  for (const [col, row] of shuffled) {
+    const slotRect = { x: col * TILE, y: row * TILE, w: 4 * TILE, h: 4 * TILE }
+    if (isOverlapping(slotRect, reserved) || isOverlapping(slotRect, map)) {
+      continue
     }
+    const pattern = patternLibrary[Math.floor(Math.random() * patternLibrary.length)]
+    const items = pattern(col, row)
+    if (items.some((item) => isOverlapping(item, reserved) || isOverlapping(item, map))) {
+      continue
+    }
+    map.push(...items)
   }
-
-  const makeCluster = (col, row, width, height) => createBrickCluster(col, row, width, height)
-
-  tryPlace(makeCluster, 2, 3, 1, 2, 18)
-  tryPlace(createSteelRect, 1, 2, 1, 2, 8)
-  tryPlace(createForestRect, 2, 3, 1, 2, 8)
-  tryPlace(createWaterRect, 2, 3, 1, 2, 6)
 
   return map
 }
@@ -782,7 +849,7 @@ function addBaseBrickRing() {
     const inRing = col >= baseCol - 1 && col <= baseCol + 2 && row >= baseRow - 1 && row <= baseRow + 2
     return !inRing
   })
-  const ring = []
+    const ring = []
   for (let r = baseRow - 1; r <= baseRow + 2; r += 1) {
     for (let c = baseCol - 1; c <= baseCol + 2; c += 1) {
       if (r < 0 || r >= BOARD_ROWS || c < 0 || c >= BOARD_COLS) {
@@ -792,12 +859,47 @@ function addBaseBrickRing() {
       if (insideBase) {
         continue
       }
-        const brick = createBrickRect(c, r)
-        brick.canBeDestroyed = true
-        ring.push(brick)
+      const brick = createBrickRect(c, r)
+      brick.canBeDestroyed = true
+      ring.push(brick)
     }
   }
   state.obstacles.push(...ring)
+
+  const barrier = []
+  const barrierTop = baseRow - 4
+  const barrierBottom = baseRow - 3
+  const barrierCols = [baseCol - 1, baseCol, baseCol + 1, baseCol + 2]
+  const addBarrierRow = (row, useSteelEdges) => {
+    if (row < 0) {
+      return
+    }
+    barrierCols.forEach((col, index) => {
+      if (col < 0 || col >= BOARD_COLS) {
+        return
+      }
+      if (useSteelEdges && (index === 0 || index === barrierCols.length - 1)) {
+        barrier.push(createSteelRect(col, row, 1, 1))
+      } else {
+        const block = createBrickRect(col, row)
+        block.canBeDestroyed = true
+        barrier.push(block)
+      }
+    })
+  }
+  addBarrierRow(barrierTop, true)
+  addBarrierRow(barrierBottom, false)
+  state.obstacles.push(...barrier)
+
+  const centerCol = 11
+  const centerRow = 12
+  if (centerRow >= 0 && centerRow + 1 < BOARD_ROWS) {
+    const centerBricks = createBrickCluster(centerCol, centerRow, 4, 2)
+    centerBricks.forEach((brick) => {
+      brick.canBeDestroyed = true
+    })
+    state.obstacles.push(...centerBricks)
+  }
 }
 
 function spawnPowerup(now) {
@@ -1943,6 +2045,8 @@ onMounted(() => {
   ctx.imageSmoothingEnabled = false
 
   resetState()
+  trackSession('join', mode.value)
+  window.addEventListener('beforeunload', () => trackSession('leave', mode.value))
   setupBgm()
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)

@@ -35,6 +35,9 @@ const DIRECTION_VECTORS = {
 const COLORS = {
   background: '#12120f',
   board: '#1c1c15',
+  roadEdge: '#2b2f21',
+  roadLine: '#4d5238',
+  roadDust: '#6c7156',
   hud: '#0f0f0d',
   brick: '#b55239',
   brickDamaged: '#8a3f29',
@@ -141,9 +144,6 @@ function setupBgm() {
   const unlock = () => {
     audioUnlocked = true
     tryPlayBgm()
-    if (engineAudio && playerMoving) {
-      engineAudio.play().catch(() => {})
-    }
   }
 
   window.addEventListener('pointerdown', unlock, { once: true })
@@ -271,6 +271,10 @@ function createPlayer() {
       speedUntil: 0,
       armorActive: false,
     },
+    recoil: 0,
+    muzzleFlash: 0,
+    treadOffset: 0,
+    isMoving: false,
   }
 }
 
@@ -292,6 +296,10 @@ function createEnemy(spawnX) {
     lastDir: 'down',
     aiTurnIn: 500 + Math.random() * 1200,
     spawnShield: 800,
+    recoil: 0,
+    muzzleFlash: 0,
+    treadOffset: 0,
+    isMoving: false,
   }
 }
 
@@ -608,7 +616,18 @@ function tryMoveTank(tank, distance) {
   if (!isBlocked(nextRect, tank)) {
     tank.x = nextX
     tank.y = nextY
+    return true
   }
+  return false
+}
+
+function updateTankMotionFx(tank, moved, deltaMs) {
+  tank.isMoving = moved
+  if (moved) {
+    tank.treadOffset = (tank.treadOffset + deltaMs * 0.18) % 3
+  }
+  tank.recoil = Math.max(0, tank.recoil - deltaMs * 0.018)
+  tank.muzzleFlash = Math.max(0, tank.muzzleFlash - deltaMs)
 }
 
 function fireBullet(owner) {
@@ -631,29 +650,34 @@ function fireBullet(owner) {
     burning: hasPowerBuff,
     trail: [],
   })
+  owner.recoil = 2.4
+  owner.muzzleFlash = 85
   owner.fireCooldown = owner.kind === 'player' ? PLAYER_FIRE_COOLDOWN : ENEMY_FIRE_COOLDOWN
 }
 
 function handlePlayerInput(deltaMs) {
   const player = state.player
   if (!player.alive || state.gameOver) {
+    updateTankMotionFx(player, false, deltaMs)
     return
   }
 
   const distance = player.speed * getPlayerSpeedMultiplier() * (deltaMs / 16.67)
+  let moved = false
   if (controls.up) {
     player.dir = 'up'
-    tryMoveTank(player, distance)
+    moved = tryMoveTank(player, distance)
   } else if (controls.down) {
     player.dir = 'down'
-    tryMoveTank(player, distance)
+    moved = tryMoveTank(player, distance)
   } else if (controls.left) {
     player.dir = 'left'
-    tryMoveTank(player, distance)
+    moved = tryMoveTank(player, distance)
   } else if (controls.right) {
     player.dir = 'right'
-    tryMoveTank(player, distance)
+    moved = tryMoveTank(player, distance)
   }
+  updateTankMotionFx(player, moved, deltaMs)
 
   if (controls.fire && player.fireCooldown <= 0) {
     fireBullet(player)
@@ -783,7 +807,8 @@ function updateEnemies(deltaMs, now) {
     const distance = (playerNearby ? enemy.speed * 1.2 : enemy.speed) * (deltaMs / 16.67)
     const oldX = enemy.x
     const oldY = enemy.y
-    tryMoveTank(enemy, distance)
+    const moved = tryMoveTank(enemy, distance)
+    updateTankMotionFx(enemy, moved, deltaMs)
 
     if (oldX === enemy.x && oldY === enemy.y) {
       chooseEnemyDirection(enemy)
@@ -983,36 +1008,6 @@ function updateParticles(deltaMs) {
   state.particles = state.particles.filter((particle) => particle.age < particle.life)
 }
 
-function tick(now) {
-  const deltaMs = Math.min(now - lastTime || 16.67, 33.34)
-  lastTime = now
-
-  if (!state.gameOver) {
-    gameTime += deltaMs
-    
-    if (gameTime >= GAME_TIME && !state.victory) {
-      state.gameOver = true
-      state.victory = true
-      statusText.value = '时间到！你成功守住了基地。按 Enter 重新开始。'
-    }
-
-    state.player.fireCooldown -= deltaMs
-    state.player.spawnShield = Math.max(0, state.player.spawnShield - deltaMs)
-
-    handlePlayerInput(deltaMs)
-    updateEnemies(deltaMs, now)
-    updatePowerups(deltaMs, now)
-    updateBullets(deltaMs)
-    updateParticles(deltaMs)
-  } else {
-    updatePowerups(deltaMs, now)
-    updateParticles(deltaMs)
-  }
-
-  drawScene()
-  animationFrame = requestAnimationFrame(tick)
-}
-
 function drawTileRect(x, y, w, h, color, accent) {
   ctx.fillStyle = color
   ctx.fillRect(x, y, w, h)
@@ -1035,8 +1030,24 @@ function drawTank(tank) {
   const renderSize = tank.renderSize ?? size
   const renderOffset = (size - renderSize) / 2
   const renderScale = renderSize / size
+  const recoilVector = DIRECTION_VECTORS[dir]
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'
+  ctx.beginPath()
+  ctx.ellipse(
+    x + renderOffset + renderSize / 2,
+    y + renderOffset + renderSize + 1.5,
+    renderSize / 2 + 2,
+    3,
+    0,
+    0,
+    Math.PI * 2,
+  )
+  ctx.fill()
+
   ctx.save()
   ctx.translate(x + size / 2, y + size / 2)
+  ctx.translate(-recoilVector.x * tank.recoil, -recoilVector.y * tank.recoil)
   ctx.scale(renderScale, renderScale)
   const angleMap = { up: 0, right: Math.PI / 2, down: Math.PI, left: -Math.PI / 2 }
   ctx.rotate(angleMap[dir])
@@ -1049,13 +1060,16 @@ function drawTank(tank) {
   
   // 履带纹理
   ctx.fillStyle = '#1a1a1a'
-  for (let i = 0; i < size; i += 3) {
+  for (let i = -tank.treadOffset; i < size; i += 3) {
     ctx.fillRect(1, i, 2, 1.5)
     ctx.fillRect(size - 3, i, 2, 1.5)
   }
 
   // 车身主体
-  ctx.fillStyle = tank.colorMain
+  const bodyGradient = ctx.createLinearGradient(4, 2, size - 4, size - 2)
+  bodyGradient.addColorStop(0, rgba(tank.colorMain, 0.95))
+  bodyGradient.addColorStop(1, darkenColor(tank.colorMain, 28))
+  ctx.fillStyle = bodyGradient
   ctx.fillRect(4, 2, size - 8, size - 4)
   
   // 车身装饰线条
@@ -1087,6 +1101,35 @@ function drawTank(tank) {
   ctx.fillRect(size / 2 - 1.5, size / 2 - 1.5, 3, 3)
 
   ctx.restore()
+
+  if (tank.muzzleFlash > 0) {
+    const frontX = x + size / 2 + recoilVector.x * (size / 2 + 4)
+    const frontY = y + size / 2 + recoilVector.y * (size / 2 + 4)
+    const alpha = Math.min(1, tank.muzzleFlash / 90)
+    const flashGradient = ctx.createRadialGradient(frontX, frontY, 0, frontX, frontY, 8)
+    flashGradient.addColorStop(0, `rgba(255, 252, 220, ${alpha})`)
+    flashGradient.addColorStop(0.45, `rgba(255, 165, 66, ${alpha * 0.85})`)
+    flashGradient.addColorStop(1, 'rgba(255, 104, 40, 0)')
+    ctx.fillStyle = flashGradient
+    ctx.beginPath()
+    ctx.arc(frontX, frontY, 8, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  if (tank.isMoving && Math.random() < 0.12) {
+    const dustX = x + size / 2 - recoilVector.x * (size / 2 - 1) + (Math.random() - 0.5) * 4
+    const dustY = y + size / 2 - recoilVector.y * (size / 2 - 1) + (Math.random() - 0.5) * 4
+    state.particles.push({
+      x: dustX,
+      y: dustY,
+      life: 180 + Math.random() * 120,
+      age: 0,
+      vx: (Math.random() - 0.5) * 0.55 - recoilVector.x * 0.45,
+      vy: (Math.random() - 0.5) * 0.55 - recoilVector.y * 0.45,
+      color: COLORS.roadDust,
+      size: 1.5 + Math.random() * 1.5,
+    })
+  }
 
   // 生命条
   if (tank.kind === 'player') {
@@ -1123,7 +1166,7 @@ function drawTank(tank) {
 
   // 出生护盾
   if (tank.spawnShield > 0) {
-    const alpha = 0.4 + 0.4 * Math.sin(Date.now() / 100)
+    const alpha = 0.4 + 0.4 * Math.sin(lastTime / 100)
     ctx.strokeStyle = `rgba(100, 200, 255, ${alpha})`
     ctx.lineWidth = 2
     ctx.beginPath()
@@ -1180,12 +1223,53 @@ function drawScene() {
   ctx.fillStyle = COLORS.background
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
-  ctx.fillStyle = COLORS.board
-  ctx.fillRect(0, 0, BOARD_COLS * TILE, CANVAS_HEIGHT)
+  const boardWidth = BOARD_COLS * TILE
+  const groundGradient = ctx.createLinearGradient(0, 0, boardWidth, CANVAS_HEIGHT)
+  groundGradient.addColorStop(0, '#303425')
+  groundGradient.addColorStop(0.4, '#262a1f')
+  groundGradient.addColorStop(1, '#1f221a')
+  ctx.fillStyle = groundGradient
+  ctx.fillRect(0, 0, boardWidth, CANVAS_HEIGHT)
 
-  ctx.fillStyle = 'rgba(255,255,255,0.03)'
-  for (let i = 0; i < BOARD_ROWS; i += 1) {
-    ctx.fillRect(0, i * TILE, BOARD_COLS * TILE, 1)
+  for (let row = 0; row < BOARD_ROWS; row += 1) {
+    for (let col = 0; col < BOARD_COLS; col += 1) {
+      const tileX = col * TILE
+      const tileY = row * TILE
+      const noise = ((col * 37 + row * 53) % 11) / 10
+      const alpha = 0.03 + noise * 0.045
+      ctx.fillStyle = `rgba(255, 244, 210, ${alpha})`
+      ctx.fillRect(tileX, tileY, TILE, 1)
+      if ((col + row) % 3 === 0) {
+        ctx.fillStyle = 'rgba(18, 18, 14, 0.2)'
+        ctx.fillRect(tileX + 2, tileY + 5, TILE - 4, 1)
+      }
+    }
+  }
+
+  const lanePulse = 0.08 + 0.04 * Math.sin(lastTime / 500)
+  ctx.fillStyle = `rgba(130, 140, 98, ${lanePulse})`
+  for (let x = TILE * 2; x < boardWidth; x += TILE * 5) {
+    ctx.fillRect(x, 0, 1, CANVAS_HEIGHT)
+    ctx.fillRect(x + 2, 0, 1, CANVAS_HEIGHT)
+  }
+
+  ctx.strokeStyle = rgba(COLORS.roadLine, 0.28)
+  ctx.lineWidth = 1
+  for (let y = TILE * 2; y < CANVAS_HEIGHT; y += TILE * 3) {
+    ctx.beginPath()
+    ctx.moveTo(0, y + 0.5)
+    ctx.lineTo(boardWidth, y + 0.5)
+    ctx.stroke()
+  }
+
+  for (let i = 0; i < 45; i += 1) {
+    const crackX = (i * 73) % boardWidth
+    const crackY = (i * 119) % CANVAS_HEIGHT
+    ctx.strokeStyle = 'rgba(12, 12, 10, 0.18)'
+    ctx.beginPath()
+    ctx.moveTo(crackX, crackY)
+    ctx.lineTo(crackX + 4 + (i % 3), crackY + 2 + (i % 4))
+    ctx.stroke()
   }
 
   for (const obstacle of state.obstacles) {
@@ -1318,6 +1402,68 @@ function keyFromEvent(event) {
   }
 }
 
+function renderGameToText() {
+  const payload = {
+    mode: state.gameOver ? (state.victory ? 'victory' : 'game_over') : 'playing',
+    coords: 'origin=(0,0) top-left; +x right; +y down; unit=pixels',
+    board: { width: BOARD_COLS * TILE, height: BOARD_ROWS * TILE, tile: TILE },
+    timerSec: Math.max(0, Math.ceil((GAME_TIME - gameTime) / 1000)),
+    score: stats.value.score,
+    playerLives: stats.value.playerLives,
+    player: {
+      x: Math.round(state.player.x),
+      y: Math.round(state.player.y),
+      dir: state.player.dir,
+      hp: state.player.hp,
+      powerSec: Math.ceil(state.player.buffs.powerUntil / 1000),
+      speedSec: Math.ceil(state.player.buffs.speedUntil / 1000),
+      armor: state.player.buffs.armorActive,
+    },
+    enemies: state.enemies
+      .filter((enemy) => enemy.alive)
+      .map((enemy) => ({ x: Math.round(enemy.x), y: Math.round(enemy.y), dir: enemy.dir, hp: enemy.hp })),
+    bullets: state.bullets.map((bullet) => ({ x: Math.round(bullet.x), y: Math.round(bullet.y), dir: bullet.dir, owner: bullet.owner })),
+    powerups: state.powerups.map((item) => ({ type: item.type, x: item.x, y: item.y, lifeMs: Math.round(item.life) })),
+    base: { alive: state.base.alive, x: state.base.x, y: state.base.y },
+    enemyLeft: stats.value.enemyLeft,
+  }
+  return JSON.stringify(payload)
+}
+
+function runFrame(deltaMs, now) {
+  lastTime = now
+
+  if (!state.gameOver) {
+    gameTime += deltaMs
+    
+    if (gameTime >= GAME_TIME && !state.victory) {
+      state.gameOver = true
+      state.victory = true
+      statusText.value = '时间到！你成功守住了基地。按 Enter 重新开始。'
+    }
+
+    state.player.fireCooldown -= deltaMs
+    state.player.spawnShield = Math.max(0, state.player.spawnShield - deltaMs)
+
+    handlePlayerInput(deltaMs)
+    updateEnemies(deltaMs, now)
+    updatePowerups(deltaMs, now)
+    updateBullets(deltaMs)
+    updateParticles(deltaMs)
+  } else {
+    updatePowerups(deltaMs, now)
+    updateParticles(deltaMs)
+  }
+
+  drawScene()
+}
+
+function tick(now) {
+  const deltaMs = Math.min(now - lastTime || 16.67, 33.34)
+  runFrame(deltaMs, now)
+  animationFrame = requestAnimationFrame(tick)
+}
+
 function handleKeyDown(event) {
   const key = keyFromEvent(event)
   if (key) {
@@ -1349,6 +1495,14 @@ onMounted(() => {
 
   resetState()
   setupBgm()
+  window.render_game_to_text = renderGameToText
+  window.advanceTime = (ms) => {
+    const stepMs = 1000 / 60
+    const steps = Math.max(1, Math.round(ms / stepMs))
+    for (let i = 0; i < steps; i += 1) {
+      runFrame(stepMs, lastTime + stepMs)
+    }
+  }
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
   animationFrame = requestAnimationFrame(tick)
@@ -1360,6 +1514,8 @@ onBeforeUnmount(() => {
     bgm.pause()
     bgm = null
   }
+  delete window.render_game_to_text
+  delete window.advanceTime
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
 })

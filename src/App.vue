@@ -1270,13 +1270,16 @@ function spawnEnemy(now) {
 }
 
 function getEnemyTarget(enemy) {
-    if (!isMultiplayer.value || !state.player2) {
-      const baseAlive = state.base && state.base.alive
-      if (!enemy.targetKind || enemy.aiTurnIn <= 0 || (enemy.targetKind === 'base' && !baseAlive)) {
-        enemy.targetKind = baseAlive && Math.random() < 1 / 2 ? 'base' : 'player'
-      }
-      return enemy.targetKind === 'base' && baseAlive ? state.base : state.player
+  if (!isMultiplayer.value || !state.player2) {
+    const baseAlive = state.base && state.base.alive
+    const distanceToPlayer = Math.hypot(state.player.x - enemy.x, state.player.y - enemy.y)
+    if (distanceToPlayer <= ENEMY_AGGRO_RANGE * 0.65 || !baseAlive) {
+      enemy.targetKind = 'player'
+    } else {
+      enemy.targetKind = 'base'
     }
+    return enemy.targetKind === 'base' && baseAlive ? state.base : state.player
+  }
 
   if (!enemy.targetKind) {
     const targetCounts = { player: 0, player2: 0 }
@@ -1330,6 +1333,11 @@ function chooseEnemyDirection(enemy) {
   }
 
   const opposite = getOppositeDirection(enemy.lastDir)
+  const horizontalBias = Math.abs(player.x - enemy.x) > Math.abs(player.y - enemy.y)
+  const preferredDir = horizontalBias
+    ? (player.x > enemy.x ? 'right' : 'left')
+    : (player.y > enemy.y ? 'down' : 'up')
+  const preferredBlocked = !passable.includes(preferredDir)
   let bestDir = passable[0]
   let bestScore = -Infinity
 
@@ -1338,10 +1346,6 @@ function chooseEnemyDirection(enemy) {
     const nextX = enemy.x + vector.x * TILE * 1.5
     const nextY = enemy.y + vector.y * TILE * 1.5
     const distanceScore = -Math.hypot(player.x - nextX, player.y - nextY)
-    const horizontalBias = Math.abs(player.x - enemy.x) > Math.abs(player.y - enemy.y)
-    const preferredDir = horizontalBias
-      ? (player.x > enemy.x ? 'right' : 'left')
-      : (player.y > enemy.y ? 'down' : 'up')
     const preferredScore = dir === preferredDir ? 24 : 0
     const sightScore = getEnemyAttackDirection(
       { ...enemy, x: nextX, y: nextY },
@@ -1351,7 +1355,8 @@ function chooseEnemyDirection(enemy) {
       : 0
     const reversePenalty = dir === opposite ? -18 : 0
     const keepMovingBonus = dir === enemy.lastDir ? 8 : 0
-    const score = distanceScore + preferredScore + sightScore + reversePenalty + keepMovingBonus
+    const detourBonus = preferredBlocked && dir !== opposite ? 10 : 0
+    const score = distanceScore + preferredScore + sightScore + reversePenalty + keepMovingBonus + detourBonus
 
     if (score > bestScore) {
       bestScore = score

@@ -141,6 +141,80 @@ const controls = {
 const mobileHint = computed(() => window.innerWidth < 860)
 const isMultiplayer = computed(() => mode.value === 'multi')
 
+const joystickBaseRef = ref(null)
+const joystickActive = ref(false)
+const joystickVector = ref({ x: 0, y: 0 })
+
+function resetJoystick() {
+  joystickActive.value = false
+  joystickVector.value = { x: 0, y: 0 }
+  controls.up = false
+  controls.down = false
+  controls.left = false
+  controls.right = false
+  sendInput()
+}
+
+function updateJoystickDirection() {
+  const { x, y } = joystickVector.value
+  const distance = Math.hypot(x, y)
+  if (distance < 0.2) {
+    controls.up = false
+    controls.down = false
+    controls.left = false
+    controls.right = false
+    sendInput()
+    return
+  }
+  if (Math.abs(x) > Math.abs(y)) {
+    controls.left = x < 0
+    controls.right = x > 0
+    controls.up = false
+    controls.down = false
+  } else {
+    controls.up = y < 0
+    controls.down = y > 0
+    controls.left = false
+    controls.right = false
+  }
+  sendInput()
+}
+
+function handleJoystickPointer(event) {
+  if (!joystickBaseRef.value) {
+    return
+  }
+  const rect = joystickBaseRef.value.getBoundingClientRect()
+  const centerX = rect.left + rect.width / 2
+  const centerY = rect.top + rect.height / 2
+  const rawX = event.clientX - centerX
+  const rawY = event.clientY - centerY
+  const radius = rect.width * 0.35
+  const distance = Math.hypot(rawX, rawY) || 1
+  const clamped = Math.min(distance, radius)
+  joystickVector.value = {
+    x: (rawX / distance) * (clamped / radius),
+    y: (rawY / distance) * (clamped / radius),
+  }
+  updateJoystickDirection()
+}
+
+function onJoystickStart(event) {
+  joystickActive.value = true
+  handleJoystickPointer(event)
+}
+
+function onJoystickMove(event) {
+  if (!joystickActive.value) {
+    return
+  }
+  handleJoystickPointer(event)
+}
+
+function onJoystickEnd() {
+  resetJoystick()
+}
+
 const powerupTypes = {
   power: {
     label: '火力',
@@ -2262,51 +2336,23 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-if="mobileHint" class="touch-controls">
-      <div class="touch-pad">
-        <button
-            class="touch-btn touch-up"
-            @touchstart.prevent="setControl('up', true)"
-            @touchend.prevent="setControl('up', false)"
-            @touchcancel.prevent="setControl('up', false)"
-            @mousedown.prevent="setControl('up', true)"
-            @mouseup.prevent="setControl('up', false)"
-            @mouseleave.prevent="setControl('up', false)"
+      <div class="joystick-wrap">
+        <div
+          ref="joystickBaseRef"
+          class="joystick-base"
+          @pointerdown.prevent="onJoystickStart"
+          @pointermove.prevent="onJoystickMove"
+          @pointerup.prevent="onJoystickEnd"
+          @pointercancel.prevent="onJoystickEnd"
+          @pointerleave.prevent="onJoystickEnd"
         >
-          ↑
-        </button>
-        <button
-            class="touch-btn touch-left"
-            @touchstart.prevent="setControl('left', true)"
-            @touchend.prevent="setControl('left', false)"
-            @touchcancel.prevent="setControl('left', false)"
-            @mousedown.prevent="setControl('left', true)"
-            @mouseup.prevent="setControl('left', false)"
-            @mouseleave.prevent="setControl('left', false)"
-        >
-          ←
-        </button>
-        <button
-            class="touch-btn touch-down"
-            @touchstart.prevent="setControl('down', true)"
-            @touchend.prevent="setControl('down', false)"
-            @touchcancel.prevent="setControl('down', false)"
-            @mousedown.prevent="setControl('down', true)"
-            @mouseup.prevent="setControl('down', false)"
-            @mouseleave.prevent="setControl('down', false)"
-        >
-          ↓
-        </button>
-        <button
-            class="touch-btn touch-right"
-            @touchstart.prevent="setControl('right', true)"
-            @touchend.prevent="setControl('right', false)"
-            @touchcancel.prevent="setControl('right', false)"
-            @mousedown.prevent="setControl('right', true)"
-            @mouseup.prevent="setControl('right', false)"
-            @mouseleave.prevent="setControl('right', false)"
-        >
-          →
-        </button>
+          <div
+            class="joystick-knob"
+            :style="{
+              transform: `translate(${joystickVector.x * 24}px, ${joystickVector.y * 24}px)`
+            }"
+          ></div>
+        </div>
       </div>
 
       <div class="action-pad">

@@ -135,12 +135,43 @@ body {
   align-items: center;
 }
 
-.touch-pad {
-  display: grid;
-  grid-template-columns: repeat(3, 64px);
-  grid-template-rows: repeat(2, 64px);
-  gap: 10px;
-  justify-content: start;
+.joystick-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.joystick-base {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.08), transparent 55%),
+    rgba(20, 12, 6, 0.75);
+  border: 2px solid rgba(240, 211, 143, 0.65);
+  box-shadow:
+    inset 0 0 12px rgba(0, 0, 0, 0.45),
+    0 14px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  position: relative;
+}
+
+.joystick-knob {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.35), transparent 60%),
+    linear-gradient(160deg, rgba(255, 213, 104, 0.8), rgba(139, 72, 18, 0.9));
+  border: 2px solid rgba(240, 211, 143, 0.9);
+  box-shadow:
+    inset 0 2px 6px rgba(255, 255, 255, 0.16),
+    0 8px 18px rgba(0, 0, 0, 0.4);
+  transform: translate(0, 0);
+  transition: transform 80ms ease-out;
 }
 
 .action-pad {
@@ -171,26 +202,6 @@ body {
   transform: translateY(1px) scale(0.98);
 }
 
-.touch-up {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.touch-left {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.touch-down {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.touch-right {
-  grid-column: 3;
-  grid-row: 2;
-}
-
 .touch-fire,
 .touch-restart {
   width: 132px;
@@ -212,9 +223,14 @@ body {
     gap: 14px;
   }
 
-  .touch-pad {
-    grid-template-columns: repeat(3, minmax(54px, 1fr));
-    grid-template-rows: repeat(2, 54px);
+  .joystick-base {
+    width: 120px;
+    height: 120px;
+  }
+
+  .joystick-knob {
+    width: 50px;
+    height: 50px;
   }
 
   .action-pad {

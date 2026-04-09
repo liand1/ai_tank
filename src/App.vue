@@ -40,25 +40,26 @@ const DIRECTION_VECTORS = {
   left: { x: -1, y: 0 },
 }
 const COLORS = {
-  background: '#12120f',
-  board: '#1c1c15',
-  roadEdge: '#2b2f21',
-  roadLine: '#4d5238',
-  roadDust: '#6c7156',
-  hud: '#0f0f0d',
-  brick: '#b55239',
-  brickDamaged: '#8a3f29',
-  steel: '#7c93a4',
-  forest: '#2f6b3f',
-  water: '#2f5f9b',
-  base: '#e0c46c',
-  text: '#f1e7c7',
-  playerMain: '#f4c542',
-  playerAccent: '#7c3b00',
-  enemyMain: '#d8d8d8',
-  enemyAccent: '#d04a3a',
-  bullet: '#f4f4f4',
+  background: '#1a1a1a',
+  board: '#1f1f1f',
+  roadEdge: '#2a2a2a',
+  roadLine: '#3a3a3a',
+  roadDust: '#8f8f8f',
+  hud: '#101010',
+  brick: '#b35a3f',
+  brickDamaged: '#8f3f2f',
+  steel: '#8c8c8c',
+  forest: '#4c7a3f',
+  water: '#1890ff',
+  base: '#f7d51d',
+  text: '#ffffff',
+  playerMain: '#52c41a',
+  playerAccent: '#2c7a0b',
+  enemyMain: '#ff4d4f',
+  enemyAccent: '#8f2022',
+  bullet: '#ffffff',
 }
+const PIXEL_FONT = "'Press Start 2P', 'Pixel Operator', 'VT323', monospace"
 
 const canvasRef = ref(null)
 const statusText = ref('按方向键移动，空格发射，守住基地。')
@@ -296,10 +297,10 @@ function connectWs() {
     if (msg.type === 'end') {
       mpStatus.value = 'ended'
       statusText.value = msg.winner === 'host'
-        ? '对手退出，你获胜。'
-        : msg.winner === 'guest'
-          ? '对手获胜。'
-          : '游戏结束。'
+          ? '对手退出，你获胜。'
+          : msg.winner === 'guest'
+              ? '对手获胜。'
+              : '游戏结束。'
     }
   }
 }
@@ -650,12 +651,12 @@ function resetState() {
     bombSpawnSlow: false,
     base: mode.value === 'single'
         ? {
-            x: 12 * TILE,
-            y: 24 * TILE,
-            w: 2 * TILE,
-            h: 2 * TILE,
-            alive: true,
-          }
+          x: 12 * TILE,
+          y: 24 * TILE,
+          w: 2 * TILE,
+          h: 2 * TILE,
+          alive: true,
+        }
         : null,
     enemyQueue: 10,
     extraEnemiesSpawned: 0,
@@ -683,10 +684,10 @@ function resetState() {
 
 function rectsOverlap(a, b) {
   return (
-    a.x < b.x + b.w &&
-    a.x + a.w > b.x &&
-    a.y < b.y + b.h &&
-    a.y + a.h > b.y
+      a.x < b.x + b.w &&
+      a.x + a.w > b.x &&
+      a.y < b.y + b.h &&
+      a.y + a.h > b.y
   )
 }
 
@@ -718,10 +719,10 @@ function darkenColor(hexColor, amount) {
 
 function isBlocked(rect, ignoreTank) {
   if (
-    rect.x < 0 ||
-    rect.y < 0 ||
-    rect.x + rect.w > BOARD_COLS * TILE ||
-    rect.y + rect.h > BOARD_ROWS * TILE
+      rect.x < 0 ||
+      rect.y < 0 ||
+      rect.x + rect.w > BOARD_COLS * TILE ||
+      rect.y + rect.h > BOARD_ROWS * TILE
   ) {
     return true
   }
@@ -760,10 +761,10 @@ function isBlocked(rect, ignoreTank) {
 
 function isAreaOpen(rect) {
   if (
-    rect.x < 0 ||
-    rect.y < 0 ||
-    rect.x + rect.w > BOARD_COLS * TILE ||
-    rect.y + rect.h > BOARD_ROWS * TILE
+      rect.x < 0 ||
+      rect.y < 0 ||
+      rect.x + rect.w > BOARD_COLS * TILE ||
+      rect.y + rect.h > BOARD_ROWS * TILE
   ) {
     return false
   }
@@ -860,7 +861,7 @@ function addBaseBrickRing() {
     const inRing = col >= baseCol - 1 && col <= baseCol + 2 && row >= baseRow - 1 && row <= baseRow + 2
     return !inRing
   })
-    const ring = []
+  const ring = []
   for (let r = baseRow - 1; r <= baseRow + 2; r += 1) {
     for (let c = baseCol - 1; c <= baseCol + 2; c += 1) {
       if (r < 0 || r >= BOARD_ROWS || c < 0 || c >= BOARD_COLS) {
@@ -933,8 +934,8 @@ function spawnPowerup(now) {
   }
 
   const types = isMultiplayer.value
-    ? ['power', 'speed', 'armor']
-    : ['power', 'speed', 'armor', 'fortress', 'bomb']
+      ? ['power', 'speed', 'armor']
+      : ['power', 'speed', 'armor', 'fortress', 'bomb']
   const spot = candidates[Math.floor(Math.random() * candidates.length)]
   const type = types[Math.floor(Math.random() * types.length)]
   state.powerups.push(createPowerup(type, spot.x, spot.y))
@@ -1083,9 +1084,9 @@ function getPassableDirections(enemy) {
   return DIRECTIONS.filter((dir) => {
     const vector = DIRECTION_VECTORS[dir]
     const probe = tankRect(
-      enemy,
-      enemy.x + vector.x * enemy.speed * 6,
-      enemy.y + vector.y * enemy.speed * 6,
+        enemy,
+        enemy.x + vector.x * enemy.speed * 6,
+        enemy.y + vector.y * enemy.speed * 6,
     )
     return !isBlocked(probe, enemy)
   })
@@ -1137,11 +1138,11 @@ function fireBullet(owner) {
 
   const vector = DIRECTION_VECTORS[owner.dir]
   const hasPowerBuff = owner.kind === 'player'
-    ? state.player.buffs.powerUntil > 0
-    : owner.kind === 'player2'
-      ? state.player2?.buffs.powerUntil > 0
-      : false
-  
+      ? state.player.buffs.powerUntil > 0
+      : owner.kind === 'player2'
+          ? state.player2?.buffs.powerUntil > 0
+          : false
+
   state.bullets.push({
     owner: owner.kind,
     x: owner.x + owner.size / 2 + vector.x * (owner.size / 2),
@@ -1298,12 +1299,12 @@ function spawnExtraEnemy(now) {
   if (gameTime >= GAME_TIME) {
     return
   }
-  
+
   const extraEnemyCount = Math.floor(gameTime / EXTRA_ENEMY_INTERVAL)
   if (extraEnemyCount <= state.extraEnemiesSpawned) {
     return
   }
-  
+
   if (state.enemies.filter((enemy) => enemy.alive).length >= 2) {
     return
   }
@@ -1335,8 +1336,8 @@ function chooseEnemyDirection(enemy) {
   const opposite = getOppositeDirection(enemy.lastDir)
   const horizontalBias = Math.abs(player.x - enemy.x) > Math.abs(player.y - enemy.y)
   const preferredDir = horizontalBias
-    ? (player.x > enemy.x ? 'right' : 'left')
-    : (player.y > enemy.y ? 'down' : 'up')
+      ? (player.x > enemy.x ? 'right' : 'left')
+      : (player.y > enemy.y ? 'down' : 'up')
   const preferredBlocked = !passable.includes(preferredDir)
   let bestDir = passable[0]
   let bestScore = -Infinity
@@ -1348,11 +1349,11 @@ function chooseEnemyDirection(enemy) {
     const distanceScore = -Math.hypot(player.x - nextX, player.y - nextY)
     const preferredScore = dir === preferredDir ? 24 : 0
     const sightScore = getEnemyAttackDirection(
-      { ...enemy, x: nextX, y: nextY },
-      player,
+        { ...enemy, x: nextX, y: nextY },
+        player,
     )
-      ? 36
-      : 0
+        ? 36
+        : 0
     const reversePenalty = dir === opposite ? -18 : 0
     const keepMovingBonus = dir === enemy.lastDir ? 8 : 0
     const detourBonus = preferredBlocked && dir !== opposite ? 10 : 0
@@ -1433,7 +1434,7 @@ function updateEnemies(deltaMs, now) {
   spawnEnemy(now)
 }
 
-  function damageTank(tank, damage, attackerKind = null) {
+function damageTank(tank, damage, attackerKind = null) {
   if (!tank.alive) {
     return
   }
@@ -1451,77 +1452,77 @@ function updateEnemies(deltaMs, now) {
   playSfx(SFX_EXPLOSION, 0.6)
   explode(tank.x + tank.size / 2, tank.y + tank.size / 2, tank.colorMain)
 
-      if (tank.kind === 'enemy') {
-        stats.value.score += 100
-        stats.value.enemyLeft = state.enemyQueue + state.enemies.filter((enemy) => enemy.alive).length
-        } else {
-      if (tank.hp > 0) {
-        statusText.value = `我方坦克剩余 ${tank.hp} 点耐久。`
-      } else if (tank.kind === 'player2') {
-        if (!isMultiplayer.value) {
-          stats.value.player2Lives -= 1
-        }
-        if (isMultiplayer.value) {
-          stats.value.killsA += 1
-          if (stats.value.killsA >= 10) {
-            state.gameOver = true
-            statusText.value = '黄色坦克 10 次击杀，获胜！'
-            if (isHost.value) {
-              ws?.readyState === WebSocket.OPEN &&
-                ws.send(JSON.stringify({ type: 'end', winner: 'host' }))
-            }
+  if (tank.kind === 'enemy') {
+    stats.value.score += 100
+    stats.value.enemyLeft = state.enemyQueue + state.enemies.filter((enemy) => enemy.alive).length
+  } else {
+    if (tank.hp > 0) {
+      statusText.value = `我方坦克剩余 ${tank.hp} 点耐久。`
+    } else if (tank.kind === 'player2') {
+      if (!isMultiplayer.value) {
+        stats.value.player2Lives -= 1
+      }
+      if (isMultiplayer.value) {
+        stats.value.killsA += 1
+        if (stats.value.killsA >= 10) {
+          state.gameOver = true
+          statusText.value = '黄色坦克 10 次击杀，获胜！'
+          if (isHost.value) {
+            ws?.readyState === WebSocket.OPEN &&
+            ws.send(JSON.stringify({ type: 'end', winner: 'host' }))
           }
         }
-        if (isMultiplayer.value) {
-          const respawn = createPlayer(true)
-          respawn.kind = 'player2'
-          respawn.x = 12 * TILE
-          respawn.y = 2 * TILE
-          respawn.colorMain = '#9bd2ff'
-          respawn.colorAccent = '#2b6cb0'
-          state.player2 = respawn
-          statusText.value = '蓝色坦克被击毁，已复活。'
-        } else if (stats.value.player2Lives > 0) {
-          const respawn = createPlayer(false)
-          respawn.kind = 'player2'
-          respawn.x = 12 * TILE
-          respawn.y = 2 * TILE
-          respawn.colorMain = '#9bd2ff'
-          respawn.colorAccent = '#2b6cb0'
-          state.player2 = respawn
-          statusText.value = `蓝色坦克被击毁，剩余生命 ${stats.value.player2Lives}。`
-        } else {
-          state.gameOver = true
-          statusText.value = '蓝色坦克耗尽生命，游戏结束。'
-        }
+      }
+      if (isMultiplayer.value) {
+        const respawn = createPlayer(true)
+        respawn.kind = 'player2'
+        respawn.x = 12 * TILE
+        respawn.y = 2 * TILE
+        respawn.colorMain = '#9bd2ff'
+        respawn.colorAccent = '#2b6cb0'
+        state.player2 = respawn
+        statusText.value = '蓝色坦克被击毁，已复活。'
+      } else if (stats.value.player2Lives > 0) {
+        const respawn = createPlayer(false)
+        respawn.kind = 'player2'
+        respawn.x = 12 * TILE
+        respawn.y = 2 * TILE
+        respawn.colorMain = '#9bd2ff'
+        respawn.colorAccent = '#2b6cb0'
+        state.player2 = respawn
+        statusText.value = `蓝色坦克被击毁，剩余生命 ${stats.value.player2Lives}。`
       } else {
-        if (!isMultiplayer.value) {
-          stats.value.playerLives -= 1
-        }
-        if (isMultiplayer.value) {
-          stats.value.killsB += 1
-          if (stats.value.killsB >= 10) {
-            state.gameOver = true
-            statusText.value = '蓝色坦克 10 次击杀，获胜！'
-            if (isHost.value) {
-              ws?.readyState === WebSocket.OPEN &&
-                ws.send(JSON.stringify({ type: 'end', winner: 'guest' }))
-            }
+        state.gameOver = true
+        statusText.value = '蓝色坦克耗尽生命，游戏结束。'
+      }
+    } else {
+      if (!isMultiplayer.value) {
+        stats.value.playerLives -= 1
+      }
+      if (isMultiplayer.value) {
+        stats.value.killsB += 1
+        if (stats.value.killsB >= 10) {
+          state.gameOver = true
+          statusText.value = '蓝色坦克 10 次击杀，获胜！'
+          if (isHost.value) {
+            ws?.readyState === WebSocket.OPEN &&
+            ws.send(JSON.stringify({ type: 'end', winner: 'guest' }))
           }
         }
-        if (isMultiplayer.value) {
-          state.player = createPlayer(true)
-          statusText.value = '黄色坦克被击毁，已复活。'
-        } else if (stats.value.playerLives > 0) {
-          state.player = createPlayer(false)
-          statusText.value = `你被击毁了，剩余生命 ${stats.value.playerLives}。`
-        } else {
-          state.gameOver = true
-          statusText.value = '游戏结束，基地失守前你已耗尽生命。按 Enter 重新开始。'
-        }
+      }
+      if (isMultiplayer.value) {
+        state.player = createPlayer(true)
+        statusText.value = '黄色坦克被击毁，已复活。'
+      } else if (stats.value.playerLives > 0) {
+        state.player = createPlayer(false)
+        statusText.value = `你被击毁了，剩余生命 ${stats.value.playerLives}。`
+      } else {
+        state.gameOver = true
+        statusText.value = '游戏结束，基地失守前你已耗尽生命。按 Enter 重新开始。'
       }
     }
   }
+}
 
 function damageObstacle(obstacle) {
   if (obstacle.type !== 'brick' && !obstacle.canBeDestroyed) {
@@ -1567,10 +1568,10 @@ function updateBullets(deltaMs) {
 
     const rect = bulletRect(bullet)
     if (
-      rect.x < 0 ||
-      rect.y < 0 ||
-      rect.x + rect.w > BOARD_COLS * TILE ||
-      rect.y + rect.h > BOARD_ROWS * TILE
+        rect.x < 0 ||
+        rect.y < 0 ||
+        rect.x + rect.w > BOARD_COLS * TILE ||
+        rect.y + rect.h > BOARD_ROWS * TILE
     ) {
       bullet.alive = false
       continue
@@ -1680,77 +1681,87 @@ function tick(now) {
   const deltaMs = Math.min(now - lastTime || 16.67, 33.34)
   lastTime = now
 
-      if (!state.gameOver) {
-        if (isMultiplayer.value) {
-          mpTime += deltaMs
-          if (mpTime >= MP_GAME_TIME && !state.gameOver) {
-            state.gameOver = true
-            const winner =
-              stats.value.killsA === stats.value.killsB
+  if (!state.gameOver) {
+    if (isMultiplayer.value) {
+      mpTime += deltaMs
+      if (mpTime >= MP_GAME_TIME && !state.gameOver) {
+        state.gameOver = true
+        const winner =
+            stats.value.killsA === stats.value.killsB
                 ? 'draw'
                 : stats.value.killsA > stats.value.killsB
-                  ? 'host'
-                  : 'guest'
-            statusText.value = winner === 'draw'
-              ? '时间到，平局。'
-              : winner === 'host'
+                    ? 'host'
+                    : 'guest'
+        statusText.value = winner === 'draw'
+            ? '时间到，平局。'
+            : winner === 'host'
                 ? '时间到，你获胜！'
                 : '时间到，你失败。'
-            if (isMultiplayer.value && isHost.value) {
-              ws?.readyState === WebSocket.OPEN &&
-                ws.send(JSON.stringify({ type: 'end', winner }))
-            }
-          }
-        } else {
-          gameTime += deltaMs
-          if (gameTime >= GAME_TIME && !state.victory) {
-            state.gameOver = true
-            state.victory = true
-            statusText.value = '时间到！你成功守住了基地。按 Enter 重新开始。'
-          }
-        }
-
-        if (!isMultiplayer.value || isHost.value) {
-          state.player.fireCooldown -= deltaMs
-          if (isMultiplayer.value && state.player2) {
-            state.player2.fireCooldown -= deltaMs
-            state.player2.spawnShield = Math.max(0, state.player2.spawnShield - deltaMs)
-          }
-          state.player.spawnShield = Math.max(0, state.player.spawnShield - deltaMs)
-
-        if (isMultiplayer.value) {
-          handleTankInput(state.player, controls, deltaMs, true)
-          handleTankInput(state.player2, remoteControls, deltaMs, false)
-        } else {
-          handleTankInput(state.player, controls, deltaMs, true)
-        }
-        updateEnemies(deltaMs, now)
-        updatePowerups(deltaMs, now)
-        updateBullets(deltaMs)
-        updateParticles(deltaMs)
-        if (isMultiplayer.value) {
-          sendStateToGuest()
+        if (isMultiplayer.value && isHost.value) {
+          ws?.readyState === WebSocket.OPEN &&
+          ws.send(JSON.stringify({ type: 'end', winner }))
         }
       }
     } else {
-      updatePowerups(deltaMs, now)
-      updateParticles(deltaMs)
+      gameTime += deltaMs
+      if (gameTime >= GAME_TIME && !state.victory) {
+        state.gameOver = true
+        state.victory = true
+        statusText.value = '时间到！你成功守住了基地。按 Enter 重新开始。'
+      }
     }
+
+    if (!isMultiplayer.value || isHost.value) {
+      state.player.fireCooldown -= deltaMs
+      if (isMultiplayer.value && state.player2) {
+        state.player2.fireCooldown -= deltaMs
+        state.player2.spawnShield = Math.max(0, state.player2.spawnShield - deltaMs)
+      }
+      state.player.spawnShield = Math.max(0, state.player.spawnShield - deltaMs)
+
+      if (isMultiplayer.value) {
+        handleTankInput(state.player, controls, deltaMs, true)
+        handleTankInput(state.player2, remoteControls, deltaMs, false)
+      } else {
+        handleTankInput(state.player, controls, deltaMs, true)
+      }
+      updateEnemies(deltaMs, now)
+      updatePowerups(deltaMs, now)
+      updateBullets(deltaMs)
+      updateParticles(deltaMs)
+      if (isMultiplayer.value) {
+        sendStateToGuest()
+      }
+    }
+  } else {
+    updatePowerups(deltaMs, now)
+    updateParticles(deltaMs)
+  }
 
   drawScene()
   animationFrame = requestAnimationFrame(tick)
 }
 function drawTileRect(x, y, w, h, color, accent) {
+  const px = Math.floor(x)
+  const py = Math.floor(y)
+  const pw = Math.floor(w)
+  const ph = Math.floor(h)
+
   ctx.fillStyle = color
-  ctx.fillRect(x, y, w, h)
-  if (!accent) {
-    return
+  ctx.fillRect(px, py, pw, ph)
+
+  if (accent) {
+    ctx.fillStyle = accent
+    for (let row = 0; row < ph; row += 4) {
+      for (let col = (row / 4) % 2 === 0 ? 0 : 2; col < pw; col += 4) {
+        ctx.fillRect(px + col, py + row, 2, 2)
+      }
+    }
   }
 
-  ctx.fillStyle = accent
-  for (let row = 0; row < h; row += 8) {
-    ctx.fillRect(x, y + row, w, 2)
-  }
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)'
+  ctx.fillRect(px, py + ph - 2, pw, 2)
+  ctx.fillRect(px + pw - 2, py, 2, ph)
 }
 
 function drawTank(tank) {
@@ -1758,24 +1769,13 @@ function drawTank(tank) {
     return
   }
 
-  const { x, y, size, dir } = tank
+  const x = Math.floor(tank.x)
+  const y = Math.floor(tank.y)
+  const { size, dir } = tank
   const renderSize = tank.renderSize ?? size
   const renderOffset = (size - renderSize) / 2
   const renderScale = renderSize / size
   const recoilVector = DIRECTION_VECTORS[dir]
-
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'
-  ctx.beginPath()
-  ctx.ellipse(
-    x + renderOffset + renderSize / 2,
-    y + renderOffset + renderSize + 1.5,
-    renderSize / 2 + 2,
-    3,
-    0,
-    0,
-    Math.PI * 2,
-  )
-  ctx.fill()
 
   ctx.save()
   ctx.translate(x + size / 2, y + size / 2)
@@ -1785,67 +1785,40 @@ function drawTank(tank) {
   ctx.rotate(angleMap[dir])
   ctx.translate(-size / 2, -size / 2)
 
-  // 履带部分 - 两侧
-  ctx.fillStyle = '#2a2a2a'
+  ctx.fillStyle = '#1f1f1f'
   ctx.fillRect(0, 0, 4, size)
   ctx.fillRect(size - 4, 0, 4, size)
-  
-  // 履带纹理
-  ctx.fillStyle = '#1a1a1a'
-  for (let i = -tank.treadOffset; i < size; i += 3) {
-    ctx.fillRect(1, i, 2, 1.5)
-    ctx.fillRect(size - 3, i, 2, 1.5)
+
+  ctx.fillStyle = '#444'
+  for (let i = -tank.treadOffset; i < size; i += 4) {
+    ctx.fillRect(1, i, 2, 2)
+    ctx.fillRect(size - 3, i, 2, 2)
   }
 
-  // 车身主体
-  const bodyGradient = ctx.createLinearGradient(4, 2, size - 4, size - 2)
-  bodyGradient.addColorStop(0, rgba(tank.colorMain, 0.95))
-  bodyGradient.addColorStop(1, darkenColor(tank.colorMain, 28))
-  ctx.fillStyle = bodyGradient
+  ctx.fillStyle = tank.colorMain
   ctx.fillRect(4, 2, size - 8, size - 4)
-  
-  // 车身装饰线条
   ctx.fillStyle = tank.colorAccent
-  ctx.fillRect(5, 3, size - 10, size - 6)
-  
-  // 车体细节 - 前部装甲
-  ctx.fillStyle = rgba(tank.colorMain, 0.7)
-  ctx.fillRect(5, 2, size - 10, 4)
+  ctx.fillRect(5, 5, size - 10, size - 10)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(5, 3, size - 10, 2)
 
-  // 炮塔基座
-  ctx.fillStyle = darkenColor(tank.colorMain, 20)
+  ctx.fillStyle = darkenColor(tank.colorMain, 24)
   ctx.fillRect(size / 2 - 3, size / 2 - 3, 6, 6)
 
-  // 主炮管
-  ctx.fillStyle = '#3a3a3a'
+  ctx.fillStyle = '#2b2b2b'
   ctx.fillRect(size / 2 - 2, -2, 4, size / 2 + 2)
-  
-  // 炮管高光
-  ctx.fillStyle = '#5a5a5a'
+  ctx.fillStyle = '#a0a0a0'
   ctx.fillRect(size / 2 - 1, -1, 2, size / 2)
-
-  // 炮塔顶部
-  ctx.fillStyle = tank.colorAccent
-  ctx.fillRect(size / 2 - 2.5, size / 2 - 2.5, 5, 5)
-  
-  // 炮塔细节
-  ctx.fillStyle = rgba(tank.colorMain, 0.8)
-  ctx.fillRect(size / 2 - 1.5, size / 2 - 1.5, 3, 3)
 
   ctx.restore()
 
   if (tank.muzzleFlash > 0) {
-    const frontX = x + size / 2 + recoilVector.x * (size / 2 + 4)
-    const frontY = y + size / 2 + recoilVector.y * (size / 2 + 4)
-    const alpha = Math.min(1, tank.muzzleFlash / 90)
-    const flashGradient = ctx.createRadialGradient(frontX, frontY, 0, frontX, frontY, 8)
-    flashGradient.addColorStop(0, `rgba(255, 252, 220, ${alpha})`)
-    flashGradient.addColorStop(0.45, `rgba(255, 165, 66, ${alpha * 0.85})`)
-    flashGradient.addColorStop(1, 'rgba(255, 104, 40, 0)')
-    ctx.fillStyle = flashGradient
-    ctx.beginPath()
-    ctx.arc(frontX, frontY, 8, 0, Math.PI * 2)
-    ctx.fill()
+    const frontX = Math.floor(x + size / 2 + recoilVector.x * (size / 2 + 4))
+    const frontY = Math.floor(y + size / 2 + recoilVector.y * (size / 2 + 4))
+    ctx.fillStyle = '#f7d51d'
+    ctx.fillRect(frontX - 2, frontY - 2, 5, 5)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(frontX - 1, frontY - 1, 3, 3)
   }
 
   if (tank.isMoving && Math.random() < 0.12) {
@@ -1863,88 +1836,70 @@ function drawTank(tank) {
     })
   }
 
-  // 生命条
-    if (tank.kind === 'player' || tank.kind === 'player2') {
-      const hpRatio = tank.hp / tank.maxHp
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
-      ctx.fillRect(x + renderOffset - 1, y + renderOffset - 7, renderSize + 2, 4)
-      const armorActive = tank.buffs?.armorActive
-      ctx.fillStyle = armorActive ? '#4ade80' : tank.kind === 'player2' ? '#60a5fa' : '#fbbf24'
-      ctx.fillRect(x + renderOffset, y + renderOffset - 6, renderSize * hpRatio, 2)
-      
-      // 能量效果（如果有增益）
-      if (tank.buffs?.powerUntil > 0) {
-        ctx.strokeStyle = 'rgba(255, 112, 67, 0.6)'
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.arc(x + renderOffset + renderSize / 2, y + renderOffset + renderSize / 2, renderSize / 2 + 2, 0, Math.PI * 2)
-        ctx.stroke()
-      }
-      if (tank.buffs?.speedUntil > 0) {
-        ctx.strokeStyle = 'rgba(41, 182, 246, 0.5)'
-        ctx.lineWidth = 1
-        ctx.beginPath()
-      ctx.arc(x + renderOffset + renderSize / 2, y + renderOffset + renderSize / 2, renderSize / 2 + 3, 0, Math.PI * 2)
-      ctx.stroke()
+  if (tank.kind === 'player' || tank.kind === 'player2') {
+    const hpRatio = tank.hp / tank.maxHp
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(x + renderOffset - 1, y + renderOffset - 7, renderSize + 2, 4)
+    const armorActive = tank.buffs?.armorActive
+    ctx.fillStyle = armorActive ? '#52c41a' : tank.kind === 'player2' ? '#1890ff' : '#f7d51d'
+    ctx.fillRect(x + renderOffset, y + renderOffset - 6, Math.floor(renderSize * hpRatio), 2)
+
+    if (tank.buffs?.powerUntil > 0 && Math.floor(lastTime / 160) % 2 === 0) {
+      ctx.strokeStyle = '#ff4d4f'
+      ctx.strokeRect(x + renderOffset - 2, y + renderOffset - 2, renderSize + 4, renderSize + 4)
+    }
+    if (tank.buffs?.speedUntil > 0 && Math.floor(lastTime / 220) % 2 === 0) {
+      ctx.strokeStyle = '#1890ff'
+      ctx.strokeRect(x + renderOffset - 3, y + renderOffset - 3, renderSize + 6, renderSize + 6)
     }
   }
 
   if (tank.kind === 'enemy') {
     const hpRatio = tank.hp / tank.maxHp
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+    ctx.fillStyle = '#000000'
     ctx.fillRect(x + renderOffset - 1, y + renderOffset - 7, renderSize + 2, 4)
-    ctx.fillStyle = '#ef4444'
-    ctx.fillRect(x + renderOffset, y + renderOffset - 6, renderSize * hpRatio, 2)
+    ctx.fillStyle = '#ff4d4f'
+    ctx.fillRect(x + renderOffset, y + renderOffset - 6, Math.floor(renderSize * hpRatio), 2)
   }
 
-  // 出生护盾
   if (tank.spawnShield > 0) {
-    const alpha = 0.4 + 0.4 * Math.sin(lastTime / 100)
-    ctx.strokeStyle = `rgba(100, 200, 255, ${alpha})`
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.arc(x + renderOffset + renderSize / 2, y + renderOffset + renderSize / 2, renderSize / 2 + 5, 0, Math.PI * 2)
-    ctx.stroke()
+    if (Math.floor(lastTime / 120) % 2 === 0) {
+      ctx.strokeStyle = '#ffffff'
+      ctx.strokeRect(x + renderOffset - 4, y + renderOffset - 4, renderSize + 8, renderSize + 8)
+    }
   }
 }
 
 function drawPowerup(item) {
   const meta = powerupTypes[item.type]
-  const centerX = item.x + item.size / 2
-  const centerY = item.y + item.size / 2
+  const x = Math.floor(item.x)
+  const y = Math.floor(item.y)
+  const size = Math.floor(item.size)
+  const centerX = x + size / 2
+  const centerY = y + size / 2
+  const blink = Math.floor(lastTime / 150) % 2 === 0
 
-  ctx.fillStyle = rgba(meta.color, 0.2)
-  ctx.beginPath()
-  ctx.arc(centerX, centerY, 11, 0, Math.PI * 2)
-  ctx.fill()
-
+  ctx.fillStyle = '#000000'
+  ctx.fillRect(x - 1, y - 1, size + 2, size + 2)
   ctx.fillStyle = meta.color
-  ctx.fillRect(item.x, item.y, item.size, item.size)
-  ctx.fillStyle = meta.accent
+  ctx.fillRect(x, y, size, size)
+  ctx.fillStyle = blink ? '#ffffff' : meta.accent
 
   if (item.type === 'power') {
-    ctx.beginPath()
-    ctx.moveTo(centerX + 1, item.y + 1)
-    ctx.lineTo(centerX - 3, centerY)
-    ctx.lineTo(centerX + 1, centerY)
-    ctx.lineTo(centerX - 1, item.y + item.size - 1)
-    ctx.lineTo(centerX + 4, centerY + 1)
-    ctx.lineTo(centerX, centerY + 1)
-    ctx.closePath()
-    ctx.fill()
+    ctx.fillRect(centerX - 1, y + 2, 2, size - 4)
+    ctx.fillRect(centerX - 3, centerY - 1, 6, 2)
     return
   }
 
   if (item.type === 'speed') {
-    ctx.beginPath()
-    ctx.arc(centerX, centerY, 4.5, 0, Math.PI * 2)
-    ctx.fill()
+    ctx.fillRect(centerX - 3, centerY - 3, 6, 6)
     ctx.fillRect(centerX + 3, centerY - 1, 4, 2)
     ctx.fillRect(centerX - 7, centerY - 1, 3, 2)
     return
   }
 
-  ctx.fillRect(centerX - 4, centerY - 5, 8, 10)
+  ctx.fillRect(centerX - 4, centerY - 5, 8, 2)
+  ctx.fillRect(centerX - 4, centerY + 3, 8, 2)
   ctx.fillRect(centerX - 1, centerY - 8, 2, 16)
 }
 
@@ -1953,55 +1908,38 @@ function drawScene() {
     return
   }
 
+  ctx.imageSmoothingEnabled = false
   ctx.fillStyle = COLORS.background
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
   const boardWidth = BOARD_COLS * TILE
-  const groundGradient = ctx.createLinearGradient(0, 0, boardWidth, CANVAS_HEIGHT)
-  groundGradient.addColorStop(0, '#303425')
-  groundGradient.addColorStop(0.4, '#262a1f')
-  groundGradient.addColorStop(1, '#1f221a')
-  ctx.fillStyle = groundGradient
+  ctx.fillStyle = COLORS.board
   ctx.fillRect(0, 0, boardWidth, CANVAS_HEIGHT)
 
   for (let row = 0; row < BOARD_ROWS; row += 1) {
     for (let col = 0; col < BOARD_COLS; col += 1) {
       const tileX = col * TILE
       const tileY = row * TILE
-      const noise = ((col * 37 + row * 53) % 11) / 10
-      const alpha = 0.03 + noise * 0.045
-      ctx.fillStyle = `rgba(255, 244, 210, ${alpha})`
+      ctx.fillStyle = (col + row) % 2 === 0 ? '#222222' : '#252525'
+      ctx.fillRect(tileX, tileY, TILE, TILE)
+      ctx.fillStyle = '#2d2d2d'
       ctx.fillRect(tileX, tileY, TILE, 1)
-      if ((col + row) % 3 === 0) {
-        ctx.fillStyle = 'rgba(18, 18, 14, 0.2)'
-        ctx.fillRect(tileX + 2, tileY + 5, TILE - 4, 1)
-      }
+      ctx.fillRect(tileX, tileY, 1, TILE)
     }
   }
 
-  const lanePulse = 0.08 + 0.04 * Math.sin(lastTime / 500)
-  ctx.fillStyle = `rgba(130, 140, 98, ${lanePulse})`
-  for (let x = TILE * 2; x < boardWidth; x += TILE * 5) {
-    ctx.fillRect(x, 0, 1, CANVAS_HEIGHT)
-    ctx.fillRect(x + 2, 0, 1, CANVAS_HEIGHT)
-  }
-
-  ctx.strokeStyle = rgba(COLORS.roadLine, 0.28)
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)'
   ctx.lineWidth = 1
-  for (let y = TILE * 2; y < CANVAS_HEIGHT; y += TILE * 3) {
+  for (let x = 0; x <= boardWidth; x += TILE) {
+    ctx.beginPath()
+    ctx.moveTo(x + 0.5, 0)
+    ctx.lineTo(x + 0.5, CANVAS_HEIGHT)
+    ctx.stroke()
+  }
+  for (let y = 0; y <= CANVAS_HEIGHT; y += TILE) {
     ctx.beginPath()
     ctx.moveTo(0, y + 0.5)
     ctx.lineTo(boardWidth, y + 0.5)
-    ctx.stroke()
-  }
-
-  for (let i = 0; i < 45; i += 1) {
-    const crackX = (i * 73) % boardWidth
-    const crackY = (i * 119) % CANVAS_HEIGHT
-    ctx.strokeStyle = 'rgba(12, 12, 10, 0.18)'
-    ctx.beginPath()
-    ctx.moveTo(crackX, crackY)
-    ctx.lineTo(crackX + 4 + (i % 3), crackY + 2 + (i % 4))
     ctx.stroke()
   }
 
@@ -2009,22 +1947,26 @@ function drawScene() {
     if (obstacle.type === 'brick') {
       const damageLevel = obstacle.maxHp - obstacle.hp
       const brickColor = damageLevel > 0 ? COLORS.brickDamaged : COLORS.brick
-      const accent = obstacle.hp === 1 ? '#f1b18f' : '#d48357'
+      const accent = obstacle.hp === 1 ? '#f7c7a8' : '#d08a6a'
       drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, brickColor, accent)
     } else if (obstacle.type === 'fortress') {
-      drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, '#b27a3f', '#f0d9b5')
+      drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, '#8c8c8c', '#bfbfbf')
     } else if (obstacle.type === 'steel') {
-      drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, COLORS.steel, '#c8d3dd')
+      drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, COLORS.steel, '#bfbfbf')
     } else if (obstacle.type === 'water') {
-      drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, COLORS.water, '#75a5e6')
+      const waveColor = Math.floor(lastTime / 200) % 2 === 0 ? '#7fc8ff' : '#4da7ff'
+      drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, COLORS.water, waveColor)
     }
   }
 
-    if (state.base && state.base.alive) {
-      drawTileRect(state.base.x, state.base.y, state.base.w, state.base.h, COLORS.base, '#f2db87')
-      ctx.fillStyle = '#573500'
-      ctx.fillRect(state.base.x + 9, state.base.y + 9, 14, 14)
-    }
+  if (state.base && state.base.alive) {
+    drawTileRect(state.base.x, state.base.y, state.base.w, state.base.h, COLORS.base, '#fff3a0')
+    ctx.fillStyle = '#5a4500'
+    ctx.fillRect(state.base.x + 10, state.base.y + 8, 12, 14)
+    ctx.fillStyle = '#fff3a0'
+    ctx.fillRect(state.base.x + 14, state.base.y + 10, 4, 3)
+    ctx.fillRect(state.base.x + 12, state.base.y + 15, 8, 2)
+  }
 
   state.powerups.forEach(drawPowerup)
 
@@ -2035,8 +1977,8 @@ function drawScene() {
     for (let i = 0; i < bullet.trail.length; i += 1) {
       const point = bullet.trail[i]
       const alpha = (i + 1) / bullet.trail.length
-      ctx.fillStyle = `rgba(244, 244, 244, ${alpha * 0.45})`
-      ctx.fillRect(point.x - 1, point.y - 1, 2, 2)
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.45})`
+      ctx.fillRect(Math.floor(point.x) - 1, Math.floor(point.y) - 1, 2, 2)
     }
   }
   drawTank(state.player)
@@ -2047,25 +1989,21 @@ function drawScene() {
 
   for (const obstacle of state.obstacles) {
     if (obstacle.type === 'forest') {
-      drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, COLORS.forest, '#72b15e')
+      drawTileRect(obstacle.x, obstacle.y, obstacle.w, obstacle.h, COLORS.forest, '#95cf71')
     }
   }
 
   ctx.fillStyle = COLORS.bullet
   for (const bullet of state.bullets) {
     if (bullet.burning) {
-      // 燃烧效果的炮弹 - 核心
-      const gradient = ctx.createRadialGradient(bullet.x, bullet.y, 0, bullet.x, bullet.y, 6)
-      gradient.addColorStop(0, '#fff7e6')
-      gradient.addColorStop(0.3, '#ff9500')
-      gradient.addColorStop(0.7, '#ff4500')
-      gradient.addColorStop(1, 'rgba(255, 69, 0, 0)')
-      ctx.fillStyle = gradient
-      ctx.beginPath()
-      ctx.arc(bullet.x, bullet.y, 6, 0, Math.PI * 2)
-      ctx.fill()
-      
-      // 燃烧尾迹粒子
+      const bx = Math.floor(bullet.x)
+      const by = Math.floor(bullet.y)
+      const pulse = Math.floor(lastTime / 80) % 2 === 0
+      ctx.fillStyle = pulse ? '#ff4d4f' : '#f7d51d'
+      ctx.fillRect(bx - 3, by - 3, 6, 6)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(bx - 1, by - 1, 2, 2)
+
       if (Math.random() < 0.6) {
         state.particles.push({
           x: bullet.x,
@@ -2079,52 +2017,68 @@ function drawScene() {
         })
       }
     } else {
-      ctx.fillRect(bullet.x - 2, bullet.y - 2, 4, 4)
+      ctx.fillRect(Math.floor(bullet.x) - 2, Math.floor(bullet.y) - 2, 4, 4)
     }
   }
 
   for (const particle of state.particles) {
     const alpha = 1 - particle.age / particle.life
     ctx.fillStyle = rgba(particle.color, alpha)
-    const size = particle.size || 3
-    ctx.fillRect(particle.x - size / 2, particle.y - size / 2, size, size)
+    const size = Math.max(1, Math.floor(particle.size || 3))
+    ctx.fillRect(Math.floor(particle.x - size / 2), Math.floor(particle.y - size / 2), size, size)
   }
 
-  ctx.fillStyle = COLORS.hud
-  ctx.fillRect(BOARD_COLS * TILE, 0, HUD_WIDTH, CANVAS_HEIGHT)
+  const hudX = BOARD_COLS * TILE
+  const hudTime = Math.max(0, Math.ceil((GAME_TIME - gameTime) / 1000))
+  const hudLife = isMultiplayer.value ? 'INF' : String(stats.value.playerLives)
+  const buffPower = state.player.buffs.powerUntil > 0 ? Math.ceil(state.player.buffs.powerUntil / 1000) : 0
+  const buffSpeed = state.player.buffs.speedUntil > 0 ? Math.ceil(state.player.buffs.speedUntil / 1000) : 0
+
+  ctx.fillStyle = '#0a0a0a'
+  ctx.fillRect(hudX, 0, HUD_WIDTH, CANVAS_HEIGHT)
+  ctx.strokeStyle = '#c2a36a'
+  ctx.lineWidth = 2
+  ctx.strokeRect(hudX + 1, 1, HUD_WIDTH - 2, CANVAS_HEIGHT - 2)
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 1
+  ctx.strokeRect(hudX + 5, 6, HUD_WIDTH - 12, CANVAS_HEIGHT - 12)
 
   ctx.fillStyle = COLORS.text
-  ctx.font = 'bold 16px monospace'
-  ctx.fillText('TANK', BOARD_COLS * TILE + 24, 40)
-  ctx.fillText('90', BOARD_COLS * TILE + 36, 60)
+  ctx.font = `12px ${PIXEL_FONT}`
+  ctx.fillText('TANK 90', hudX + 12, 28)
+  ctx.fillRect(hudX + 10, 36, HUD_WIDTH - 20, 2)
 
-  ctx.font = '14px monospace'
-  ctx.fillText(`TIME ${Math.max(0, Math.ceil((GAME_TIME - gameTime) / 1000))}`, BOARD_COLS * TILE + 18, 96)
-  ctx.fillText(`LIFE ${isMultiplayer.value ? '∞' : stats.value.playerLives}`, BOARD_COLS * TILE + 18, 120)
-  ctx.fillText(`HP ${state.player.hp}`, BOARD_COLS * TILE + 18, 142)
+  ctx.font = `10px ${PIXEL_FONT}`
+  ctx.fillText(`TIME ${String(hudTime).padStart(3, ' ')}`, hudX + 12, 56)
+  ctx.fillText(`LIFE ${hudLife.padStart(3, ' ')}`, hudX + 12, 76)
+  ctx.fillText(`HP   ${String(state.player.hp).padStart(3, ' ')}`, hudX + 12, 96)
   if (state.player2) {
-    ctx.fillText(`P2 ${isMultiplayer.value ? '∞' : stats.value.player2Lives}`, BOARD_COLS * TILE + 18, 164)
+    const p2life = isMultiplayer.value ? 'INF' : String(stats.value.player2Lives)
+    ctx.fillText(`P2   ${p2life.padStart(3, ' ')}`, hudX + 12, 116)
   }
-  ctx.fillText(`LEFT ${stats.value.enemyLeft}`, BOARD_COLS * TILE + 18, 186)
+  ctx.fillText(`LEFT ${String(stats.value.enemyLeft).padStart(3, ' ')}`, hudX + 12, 136)
   if (isMultiplayer.value) {
-    ctx.fillText(`K ${stats.value.killsA}-${stats.value.killsB}`, BOARD_COLS * TILE + 18, 208)
+    ctx.fillText(`K ${stats.value.killsA}-${stats.value.killsB}`, hudX + 12, 156)
   }
-  ctx.fillText('SCORE', BOARD_COLS * TILE + 18, 230)
-  ctx.fillText(`${stats.value.score}`, BOARD_COLS * TILE + 18, 252)
-  ctx.fillText(`P ${state.player.buffs.powerUntil > 0 ? Math.ceil(state.player.buffs.powerUntil / 1000) : 0}`, BOARD_COLS * TILE + 18, 252)
-  ctx.fillText(`S ${state.player.buffs.speedUntil > 0 ? Math.ceil(state.player.buffs.speedUntil / 1000) : 0}`, BOARD_COLS * TILE + 18, 274)
-  ctx.fillText('MOVE', BOARD_COLS * TILE + 18, 292)
-  ctx.fillText('ARROWS', BOARD_COLS * TILE + 18, 314)
-  ctx.fillText('FIRE', BOARD_COLS * TILE + 18, 354)
-  ctx.fillText('SPACE', BOARD_COLS * TILE + 18, 376)
+  ctx.fillRect(hudX + 10, 166, HUD_WIDTH - 20, 2)
+  ctx.fillText('SCORE', hudX + 12, 186)
+  ctx.fillText(`B ${String(buffPower).padStart(3, ' ')}`, hudX + 12, 206)
+  ctx.fillText(`S ${String(buffSpeed).padStart(3, ' ')}`, hudX + 12, 226)
+  ctx.fillText(String(stats.value.score).padStart(6, ' '), hudX + 12, 246)
+  ctx.fillRect(hudX + 10, 256, HUD_WIDTH - 20, 2)
+  ctx.fillText('MOVE', hudX + 12, 276)
+  ctx.fillText('< ^ v >', hudX + 12, 296)
+  ctx.fillText('FIRE SPACE', hudX + 12, 316)
 
   if (state.gameOver) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.52)'
-    ctx.fillRect(48, 144, 320, 112)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)'
+    ctx.fillRect(52, 146, 312, 108)
+    ctx.strokeStyle = '#ffffff'
+    ctx.strokeRect(52, 146, 312, 108)
     ctx.fillStyle = COLORS.text
-    ctx.font = 'bold 24px monospace'
+    ctx.font = `24px ${PIXEL_FONT}`
     ctx.fillText(state.victory ? 'YOU WIN' : 'GAME OVER', 100, 188)
-    ctx.font = '14px monospace'
+    ctx.font = `10px ${PIXEL_FONT}`
     ctx.fillText('PRESS ENTER TO RESTART', 84, 220)
   }
 }
@@ -2164,8 +2118,8 @@ function renderGameToText() {
       armor: state.player.buffs.armorActive,
     },
     enemies: state.enemies
-      .filter((enemy) => enemy.alive)
-      .map((enemy) => ({ x: Math.round(enemy.x), y: Math.round(enemy.y), dir: enemy.dir, hp: enemy.hp })),
+        .filter((enemy) => enemy.alive)
+        .map((enemy) => ({ x: Math.round(enemy.x), y: Math.round(enemy.y), dir: enemy.dir, hp: enemy.hp })),
     bullets: state.bullets.map((bullet) => ({ x: Math.round(bullet.x), y: Math.round(bullet.y), dir: bullet.dir, owner: bullet.owner })),
     powerups: state.powerups.map((item) => ({ type: item.type, x: item.x, y: item.y, lifeMs: Math.round(item.life) })),
     base: { alive: state.base.alive, x: state.base.x, y: state.base.y },
@@ -2179,7 +2133,7 @@ function runFrame(deltaMs, now) {
 
   if (!state.gameOver) {
     gameTime += deltaMs
-    
+
     if (gameTime >= GAME_TIME && !state.victory) {
       state.gameOver = true
       state.victory = true
@@ -2310,46 +2264,46 @@ onBeforeUnmount(() => {
     <section v-if="mobileHint" class="touch-controls">
       <div class="touch-pad">
         <button
-          class="touch-btn touch-up"
-          @touchstart.prevent="setControl('up', true)"
-          @touchend.prevent="setControl('up', false)"
-          @touchcancel.prevent="setControl('up', false)"
-          @mousedown.prevent="setControl('up', true)"
-          @mouseup.prevent="setControl('up', false)"
-          @mouseleave.prevent="setControl('up', false)"
+            class="touch-btn touch-up"
+            @touchstart.prevent="setControl('up', true)"
+            @touchend.prevent="setControl('up', false)"
+            @touchcancel.prevent="setControl('up', false)"
+            @mousedown.prevent="setControl('up', true)"
+            @mouseup.prevent="setControl('up', false)"
+            @mouseleave.prevent="setControl('up', false)"
         >
           ↑
         </button>
         <button
-          class="touch-btn touch-left"
-          @touchstart.prevent="setControl('left', true)"
-          @touchend.prevent="setControl('left', false)"
-          @touchcancel.prevent="setControl('left', false)"
-          @mousedown.prevent="setControl('left', true)"
-          @mouseup.prevent="setControl('left', false)"
-          @mouseleave.prevent="setControl('left', false)"
+            class="touch-btn touch-left"
+            @touchstart.prevent="setControl('left', true)"
+            @touchend.prevent="setControl('left', false)"
+            @touchcancel.prevent="setControl('left', false)"
+            @mousedown.prevent="setControl('left', true)"
+            @mouseup.prevent="setControl('left', false)"
+            @mouseleave.prevent="setControl('left', false)"
         >
           ←
         </button>
         <button
-          class="touch-btn touch-down"
-          @touchstart.prevent="setControl('down', true)"
-          @touchend.prevent="setControl('down', false)"
-          @touchcancel.prevent="setControl('down', false)"
-          @mousedown.prevent="setControl('down', true)"
-          @mouseup.prevent="setControl('down', false)"
-          @mouseleave.prevent="setControl('down', false)"
+            class="touch-btn touch-down"
+            @touchstart.prevent="setControl('down', true)"
+            @touchend.prevent="setControl('down', false)"
+            @touchcancel.prevent="setControl('down', false)"
+            @mousedown.prevent="setControl('down', true)"
+            @mouseup.prevent="setControl('down', false)"
+            @mouseleave.prevent="setControl('down', false)"
         >
           ↓
         </button>
         <button
-          class="touch-btn touch-right"
-          @touchstart.prevent="setControl('right', true)"
-          @touchend.prevent="setControl('right', false)"
-          @touchcancel.prevent="setControl('right', false)"
-          @mousedown.prevent="setControl('right', true)"
-          @mouseup.prevent="setControl('right', false)"
-          @mouseleave.prevent="setControl('right', false)"
+            class="touch-btn touch-right"
+            @touchstart.prevent="setControl('right', true)"
+            @touchend.prevent="setControl('right', false)"
+            @touchcancel.prevent="setControl('right', false)"
+            @mousedown.prevent="setControl('right', true)"
+            @mouseup.prevent="setControl('right', false)"
+            @mouseleave.prevent="setControl('right', false)"
         >
           →
         </button>
@@ -2357,16 +2311,16 @@ onBeforeUnmount(() => {
 
       <div class="action-pad">
         <button
-          class="touch-btn touch-fire"
-          @touchstart.prevent="tapAction('fire')"
-          @mousedown.prevent="tapAction('fire')"
+            class="touch-btn touch-fire"
+            @touchstart.prevent="tapAction('fire')"
+            @mousedown.prevent="tapAction('fire')"
         >
           开火
         </button>
         <button
-          class="touch-btn touch-restart"
-          @touchstart.prevent="handleRestart"
-          @mousedown.prevent="handleRestart"
+            class="touch-btn touch-restart"
+            @touchstart.prevent="handleRestart"
+            @mousedown.prevent="handleRestart"
         >
           重开
         </button>

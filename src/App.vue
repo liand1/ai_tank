@@ -158,7 +158,7 @@ function resetJoystick() {
 function updateJoystickDirection() {
   const { x, y } = joystickVector.value
   const distance = Math.hypot(x, y)
-  if (distance < 0.2) {
+  if (distance < 0.5) {
     controls.up = false
     controls.down = false
     controls.left = false
@@ -189,7 +189,7 @@ function handleJoystickPointer(event) {
   const centerY = rect.top + rect.height / 2
   const rawX = event.clientX - centerX
   const rawY = event.clientY - centerY
-  const radius = rect.width * 0.35
+  const radius = rect.width * 0.5
   const distance = Math.hypot(rawX, rawY) || 1
   const clamped = Math.min(distance, radius)
   joystickVector.value = {
@@ -2346,20 +2346,24 @@ onBeforeUnmount(() => {
           @pointercancel.prevent="onJoystickEnd"
           @pointerleave.prevent="onJoystickEnd"
         >
-          <div
-            class="joystick-knob"
-            :style="{
-              transform: `translate(${joystickVector.x * 24}px, ${joystickVector.y * 24}px)`
-            }"
-          ></div>
+            <div
+              class="joystick-knob"
+              :style="{
+              transform: `translate(${joystickVector.x * 14}px, ${joystickVector.y * 14}px)`
+              }"
+            ></div>
         </div>
       </div>
 
       <div class="action-pad">
         <button
-            class="touch-btn touch-fire"
-            @touchstart.prevent="tapAction('fire')"
-            @mousedown.prevent="tapAction('fire')"
+          class="touch-btn touch-fire"
+          @touchstart.prevent="setControl('fire', true)"
+          @touchend.prevent="setControl('fire', false)"
+          @touchcancel.prevent="setControl('fire', false)"
+          @mousedown.prevent="setControl('fire', true)"
+          @mouseup.prevent="setControl('fire', false)"
+          @mouseleave.prevent="setControl('fire', false)"
         >
           开火
         </button>
